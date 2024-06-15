@@ -48,7 +48,7 @@ plot_model <- function(data, model, title = ""){
 
 dat_pred <- model %>% 
   epred_draws(newdata = expand_grid(
-    dia = seq(0, max(data$dia), length = 200),
+    dia = seq(0, 30, length = 200),
     site = unique(data$site)))
 
 
@@ -89,6 +89,7 @@ plot <- dat_predS %>%
   scale_fill_manual(values = cols_state, name = NULL)+
   facet_wrap2(~site, axes = "all") +
   scale_y_continuous(name="Probability", breaks =seq(0, 1, 0.2))+
+  xlim(0,30)+
   labs(y = "Probability", x = "Colony diameter (cm)",
        title = title)+
   theme_minimal()+
@@ -109,7 +110,10 @@ dat_state_HAA <- read.csv(here("size/data/dat_state_HAA.csv"))
 dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>% 
   filter(spec_1 == "Pocillopora",
          state != "born") %>% 
-  mutate(dia = sqrt(area_1/pi)*2)
+  mutate(dia = sqrt(area_1/pi)*2) %>% 
+  mutate(site = recode(site, 
+                       "HAA" = "Haapiti",
+                       "E2B" = "Pihaena"))
 ```
 
 ```{r}
@@ -202,5 +206,5 @@ plot_states
 ggsave(filename = "plot_states.pdf",
        plot = plot_states, 
        path = here("size/plots"),
-       width = 18, height = 30, units = "cm")
+       width = 30, height = 30, units = "cm")
 ```
