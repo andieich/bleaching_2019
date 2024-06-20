@@ -1,0 +1,240 @@
+---
+title: "DHW MUR data"
+format: html
+editor: visual
+---
+
+```{r}
+library(httr) #for downloads
+library(here) #for project folder structure
+library(tidyverse)
+library(pbapply) #for progress bars
+library(raster) #to load .nc files
+library(lubridate) #fast date change function
+library(sf) # mapping
+library(ggspatial) # mapping
+library(viridis) #plots
+library(patchwork) #plots
+library(ncdf4) # read files
+library(patchwork)
+library(zoo)
+```
+
+s
+
+```{r}
+source(here("dhw/scripts/Andi_DHW_functions.R"))
+```
+
+Get MMM from Dixon et al.
+
+```{r}
+# # url to get MMM
+# url_doixon_climatology = "https://dl.dropboxusercontent.com/s/w78p8bn4rb5f60i/Polynesia.zip?dl=1"
+# 
+# # Download
+# httr::GET(url_doixon_climatology,
+#             httr::write_disk(here("dhw/data/mmm_mur_polynesia.zip"),
+#                              overwrite = T),
+#             httr::add_headers('Accept-Encoding' = 'gzip, deflate'),
+#             httr::progress("down"),
+#             httr::timeout(600))
+# 
+# #Unzip
+# 
+# unzip(here("dhw/data/mmm_mur_polynesia.zip"),
+#       exdir = here("dhw/data/"))
+# 
+# # Delete zip
+# file.remove(here("dhw/data/mmm_mur_polynesia.zip"))
+# 
+# # Move
+# 
+# file.rename(from = here("dhw/data/Polynesia/HighResCoralStress_metrics_observed_Polynesia_1985_2019_v2.0.csv"),
+#             to = here("dhw/data/mmm_mur.csv"))
+# 
+# # Delete folder
+# unlink(here("dhw/data/Polynesia"), recursive = T)
+
+```
+
+Define Moorea ROI
+
+```{r}
+moorea_lat = -17.536273
+moorea_lon = -149.832730
+
+moorea_box = bounding_box(moorea_lat, moorea_lon, 15, 15)
+```
+
+Get MMM and subset
+
+```{r}
+mur_mmm <- read.csv(here("dhw/data/mmm_mur.csv")) %>% 
+  rename("lat" = "latitude",
+         "lon" = "longitude") %>% 
+  dplyr::select(lat, lon, mmm) %>% 
+  filter(between(lat, moorea_box$lat_min, moorea_box$lat_max),
+         between(lon, moorea_box$lon_min, moorea_box$lon_max))
+```
+
+Map Moorea
+
+```{r}
+map_FrenchPolynesia <- st_read(dsn = here("dhw/data/maps/polynesia_map/PYF_adm0.shp")) %>%
+  st_as_sf()
+```
+
+Area to be downloaded. Add MMM as overlay
+
+```{r}
+map_moorea <- ggplot() +
+  geom_raster(data = mur_mmm, aes(x = lon, y = lat, fill = mmm)) +
+  geom_sf(data = map_FrenchPolynesia,
+          fill = "antiquewhite",
+          col = "black")+
+  coord_sf(xlim = c(moorea_box$lon_min, moorea_box$lon_max),
+           ylim = c(moorea_box$lat_min, moorea_box$lat_max))+
+  labs(x=NULL, y = NULL, title = "Moorea")+
+  scale_fill_viridis(name = "MMM")+
+  theme_minimal()
+
+map_moorea
+```
+
+Get SST Data
+
+```{r}
+
+#download more to calculate DHW
+
+# download_all(lat1 = moorea_box$lat_min,
+#              lat2 = moorea_box$lat_max,
+#              lon1 = moorea_box$lon_min,
+#              lon2 = moorea_box$lon_max,
+#              day1 = as.Date("2019-01-01")-12*7,
+#              day2 = "2019-12-31",
+#              parameter = "MUR_SST",
+#              folder = here("dhw/data/sst"))
+
+```
+
+```{r}
+dat_moorea_mur_sst <- read_nc(here("dhw/data/sst"),
+                      varname = "analysed_sst",
+                      values_to = "mur_sst")
+```
+
+Add MMM
+
+```{r}
+dat_moorea_mur_sst <- dat_moorea_mur_sst %>% 
+  mutate(lat = round(lat, 2),
+         lon = round(lon, 2))
+
+
+dat_moorea_mur_sst_dhw <- left_join(dat_moorea_mur_sst, 
+                                     mur_mmm, 
+                                     by = c("lat", "lon"))
+```
+
+Calculate DHW
+
+```{r}
+dat_moorea_mur_sst_dhw <- dat_moorea_mur_sst_dhw %>% 
+  group_by(lat, lon) %>% 
+ mutate(hot_spot_mmm = mur_sst - (mmm),
+        hot_spot_mmm1 = mur_sst - (mmm + 1),
+        hot_spot_29 = mur_sst - 29,
+        hot_spot_29_8 = mur_sst - 29.8) %>% 
+  mutate(hot_spot_mmm = ifelse(hot_spot_mmm >= 0, hot_spot_mmm, 0),
+         hot_spot_mmm1 = ifelse(hot_spot_mmm1 >= 0, hot_spot_mmm1, 0),
+         hot_spot_29 = ifelse(hot_spot_29 >= 0, hot_spot_29, 0),
+         hot_spot_29_8 = ifelse(hot_spot_29_8 >= 0, hot_spot_29_8, 0)) %>% 
+  group_by(lat,lon) %>% 
+  arrange(date) %>%
+  mutate(dhw_mmm = c(rep(NA, 12*7-1), rollapply(data = hot_spot_mmm/7, width = 84, FUN = sum)),
+         dhw_mmm1 = c(rep(NA, 12*7-1), rollapply(data = hot_spot_mmm1/7, width = 84, FUN = sum)),
+         dhw_29  = c(rep(NA, 12*7-1), rollapply(data = hot_spot_29 /7, width = 84, FUN = sum)),
+         dhw_29_8 = c(rep(NA, 12*7-1), rollapply(data = hot_spot_29_8/7, width = 84, FUN = sum))) %>% 
+  ungroup() 
+```
+
+Get max DHW
+
+```{r}
+dat_moorea_mur_sst_dhwS <- dat_moorea_mur_sst_dhw %>% 
+  group_by(lat, lon) %>% 
+  summarise(max_dhw_mmm = max(dhw_mmm, na.rm = T),
+            max_dhw_mmm1 = max(dhw_mmm1, na.rm = T),
+            max_dhw_29 = max(dhw_29, na.rm = T),
+            max_dhw_29_8 = max(dhw_29_8, na.rm = T)) %>% 
+  mutate_all(na_if, -Inf) %>% 
+  ungroup()
+```
+
+Plot
+
+```{r}
+plot_dhw <- function(col){
+  col = sym(col)
+  
+  map_moorea_max_dhw <- ggplot() +
+  geom_raster(data = dat_moorea_mur_sst_dhwS %>% 
+                filter(!is.na(!!col)), aes(x = lon, y = lat, fill = !!col)) +
+  geom_sf(data = map_FrenchPolynesia,
+          fill = "antiquewhite",
+          col = "black")+
+  coord_sf(xlim = c(moorea_box$lon_min, moorea_box$lon_max),
+           ylim = c(moorea_box$lat_min, moorea_box$lat_max))+
+  labs(x=NULL, y = NULL)+
+    ggtitle(as.character(col))+
+  scale_fill_viridis(name = "max. DHW")+
+  theme_minimal()+
+    theme(legend.position = "bottom")
+  return(map_moorea_max_dhw)
+}
+
+plot_compare_dhw <- (plot_dhw("max_dhw_mmm")+
+  plot_dhw("max_dhw_mmm1"))/(
+  plot_dhw("max_dhw_29")+
+  plot_dhw("max_dhw_29_8"))
+
+plot_compare_dhw
+
+```
+
+```{r}
+ggsave(filename = "plot_compare_dhw.png",
+       plot = plot_compare_dhw, 
+       path = here("dhw/plots"),
+       width = 30, height = 25, units = "cm")
+
+```
+
+Add max dhw to site coordinates
+
+```{r}
+dat_sites <- read.csv(here("dhw/data/dat_mm_site_coordinates.csv"))
+```
+
+```{r}
+dat_sites <- dat_sites %>% 
+  rowwise() %>% 
+  mutate(max_dhw_mmm = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_mmm"),
+         
+         max_dhw_mmm1 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_mmm1"),
+         
+         max_dhw_29 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_29"),
+         
+         max_dhw_29_8 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_29_8")) %>% 
+  ungroup()
+```
+
+```{r}
+write.csv(dat_sites, file = here("dhw/data/dat_sites_maxdhw_mur.csv"),row.names = F)
+```

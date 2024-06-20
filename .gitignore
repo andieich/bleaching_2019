@@ -53,3 +53,6 @@ rsconnect/
 
 # large Models
 size/models
+
+# all nc files
+*.nc
