@@ -1,0 +1,492 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+---
+
+Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+library(brms)
+library(readxl)
+```
+
+## Data
+
+```{r}
+dat <- read_excel(here("long_term/data/raw/20230926MPAMooreaData_substrate.xlsx"), 
+                  sheet = "MPAMooreaData_substrate.txt", 
+                  range = cell_cols("A:J")) %>% 
+  janitor::clean_names()
+```
+
+Clean
+
+Range of benthic cover
+
+```{r}
+dat$proportion %>% range()
+```
+
+Check `marine_area` names
+
+```{r}
+dat$marine_area %>% unique() %>% sort()
+```
+
+Check `habitat` names
+
+```{r}
+dat$habitat %>% unique() %>% sort()
+```
+
+### Is `transect` a unique ID, i.e. it occurs only once per survey year and site?
+
+```{r}
+dat %>% 
+  dplyr::select(-substrate, -proportion) %>% 
+  distinct() %>% 
+  group_by(year, marine_area, habitat, transect, season) %>% 
+  summarise(n = n()) %>% 
+  filter(n > 1)
+```
+
+2009 Pihaena Barrier reef 1 Oct
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2009, marine_area == "Pihaena", habitat == "Barrier reef", transect == 1, season == "Oct")
+```
+
+Typo. 2009-08-08 should be 2009-09-08 (consecutive row_numbers)
+
+```{r}
+dat$date[which(dat$date == as.Date("2009-08-08"))] <- as.Date("2009-09-08")#occurs only 1x
+```
+
+2012 Tiahura Outer slope 1 Mar
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2012, marine_area == "Tiahura", habitat == "Outer slope", transect == 1, season == "Mar")
+```
+
+Typo. 2012-03-09 should be 2012-03-08 (consecutive row_numbers)
+
+```{r}
+dat$date[which(
+  dat$date == as.Date("2012-03-09") & 
+    dat$habitat == "Outer slope" & 
+    dat$marine_area == "Tiahura" &  
+    dat$transect == 1)] <- as.Date("2012-03-08")
+```
+
+**2016 Nuarei Outer slope 2 Mar**
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2016, marine_area == "Nuarei", habitat == "Outer slope", transect == 2, season == "Mar")
+```
+
+Typo. 2016-04-26 should be 2016-04-19 (consecutive row_numbers)
+
+```{r}
+dat$date[which(
+  dat$date == as.Date("2016-04-26") & 
+    dat$transect == 2 & 
+    dat$marine_area == "Nuarei" & 
+    dat$habitat == "Outer slope")] <- as.Date("2016-04-19")
+```
+
+2021 Motu Ahi Fringing reef 2 Mar
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2021, marine_area == "Motu Ahi", habitat == "Fringing reef", transect == 2, season == "Mar")
+
+```
+
+Change date 18074 to 2021-03-23 not 2021-03-18
+
+```{r}
+dat$date[18074] <- as.Date("2021-03-23")
+```
+
+### 100% per survey and quadrat?
+
+```{r}
+dat %>% 
+  group_by(year, season, marine_area, habitat, transect) %>% 
+  summarise(sum_perc = round(sum(proportion), 2)) %>% 
+  filter(sum_perc != 1) %>% 
+  arrange(year, season, marine_area, habitat, transect)
+```
+
+2021 Tiahura Outer slope 1 or 3\*
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2021, marine_area == "Tiahura", habitat == "Outer slope", transect %in% c(1, 3))
+
+```
+
+´
+
+Row 17615 should be transect 3?
+
+```{r}
+dat$transect[17615] <- 3
+```
+
+**2016 Mar Tiahura Outer slope 1/ or 3**
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2016, marine_area == "Tiahura", habitat == "Outer slope", transect %in% c(1, 3))
+```
+
+```{r}
+dat[13210:13220,] %>% view()
+```
+
+Row 13216 should be transect 1?
+
+```{r}
+dat$transect[13216] <- 1
+```
+
+2009 Oct Motu Ahi Fringing reef 3
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2009, marine_area == "Motu Ahi", habitat == "Fringing reef", transect == 3, season == "Oct")
+```
+
+=\> No obvious typo?
+
+2010 Mar Haapiti Barrier reef 2
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2010, marine_area == "Haapiti", habitat == "Barrier reef", transect == 2, season == "Mar")
+```
+
+2014 Mar Gendron Fringing reef 2
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2014, marine_area == "Gendron", habitat == "Fringing reef", transect == 2, season == "Mar")
+```
+
+2015 Mar Afareaitu Outer slope 3
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2015, marine_area == "Afareaitu", habitat == "Outer slope", transect == 3, season == "Mar")
+```
+
+2020 Mar Tiahura Outer slope 1
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2020, marine_area == "Tiahura", habitat == "Outer slope", transect == 1, season == "Mar")
+```
+
+cheakced in table, 17404 shoudl be t1 not 3
+
+```{r}
+dat$transect[17404] <- 1
+```
+
+2021 Mar Gendron Outer slope 2
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2021, marine_area == "Gendron", habitat == "Outer slope", transect == 2, season == "Mar")
+```
+
+2021 Mar Gendron Outer slope 3
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2021, marine_area == "Gendron", habitat == "Outer slope", transect == 3, season == "Mar")
+```
+
+2021 Mar Motu Ahi Barrier reef 3
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2021, marine_area == "Motu Ahi", habitat == "Barrier reef", transect == 3, season == "Mar")
+```
+
+### check again 100% per survey and quadrat?
+
+```{r}
+dat %>% 
+  group_by(year, season, marine_area, habitat, transect) %>% 
+  summarise(sum_perc = round(sum(proportion), 2)) %>% 
+  filter(sum_perc != 1) %>% 
+  arrange(year, season, marine_area, habitat, transect)
+```
+
+Check if all groups have consecutive row numbers
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  group_by(year, season, marine_area, habitat, transect) %>% 
+  summarise(diff_rn = diff(row_number)) %>% 
+  filter(diff_rn != 1)
+  
+```
+
+?
+
+Does year always fit to date?
+
+```{r}
+dat %>% 
+  mutate(year2 = format(date, format= "%Y") %>% as.numeric()) %>% 
+  filter(year2 != year)
+```
+
+yes
+
+Check groups
+
+```{r}
+dat$substrate %>% unique() %>% sort()
+```
+
+Inconstant names, as Other, other, Stegastes turf, Stegastes Turf.
+
+Clean up names
+
+```{r}
+dat <- dat %>% 
+  mutate(substrate = ifelse(substrate == "Stegastes Turf", "Stegastes_turf", substrate),
+         substrate = ifelse(substrate == "other", "Other", substrate),
+         substrate = ifelse(substrate == "Other (anemone)", "Other_anemone", substrate),
+         substrate = ifelse(substrate == "Corail mou", "Softcoral", substrate),
+         substrate = ifelse(substrate == "Corail non identifié", "Other_coral", substrate),#no space
+         substrate = ifelse(substrate == "pocillopora" , "Pocillopora", substrate),
+         substrate = ifelse(substrate == "Dead coral" , "Dead_coral", substrate))#no space
+```
+
+Clean up genera
+
+-   Napopora to Porites
+
+-   only genera, no species
+
+```{r}
+dat <- dat %>% 
+  mutate(substrate = ifelse(substrate == "Napopora", "Porites", substrate)) %>% 
+  separate(col = substrate, into = "substrate", sep = " ") %>% #separate and keep genus name
+  mutate(substrate = tolower(substrate)) %>% #just to be sure
+  mutate(substrate = str_to_title(substrate)) %>% 
+  group_by(across(c(-proportion))) %>% 
+  summarise(proportion = sum(proportion, na.rm = T)) %>% 
+  ungroup()
+```
+
+Make wide and long again to get data for all genera. Otherwise, for some surveys, no corals remain \> the survey would be excluded when sub-setting to corals (tested, will happen). Like that, it's 0%
+
+```{r}
+dat <- dat %>% 
+  pivot_wider(names_from = substrate, values_from = proportion, values_fill = 0) %>% 
+  pivot_longer(cols = 9:ncol(.),names_to = "substrate", values_to = "proportion")
+```
+
+Assign benthic groups
+
+```{r}
+corals <- c("Acanthastrea",
+            "Acropora",
+            "Astrea",
+            "Astreopora",
+            "Coscinaraea",
+            "Cyphastrea",
+            "Fungia",
+            "Gardineroseris",
+            "Goniastrea",
+            "Herpolitha",
+            "Leptastrea",
+            "Leptoseris",
+            "Lobophyllia",
+            "Montipora",
+            "Other_coral",
+            "Pavona",
+            "Pocillopora",
+            "Porites",
+            "Psammocora",
+            "Synarea")
+
+macro_algae <- c("Asparagopsis",
+                 "Boodlea",
+                 "Caulerpa",
+                 "Dictyota",
+                 "Halimeda",
+                 "Macroalgae",
+                 "Padina",
+                 "Sargassum",
+                 "Turbinaria", 
+                 "Peyssonnelia")
+
+substrate_ <- c("Mud",
+                "Pavement",
+                "Rubble",
+                "Sand")
+
+other <- c("Millepora",
+           "Other",
+           "Softcoral",
+           "Other_anemone")
+
+cyanos <- c("Cyanophyceae")
+
+turf <- c("Stegastes_turf")
+
+dead_coral <- "Dead_coral"
+```
+
+```{r}
+dat <- dat %>%
+  mutate(benthic_group = case_when(substrate %in% corals ~ "coral",
+                                   substrate %in% macro_algae ~ "macro_alga",
+                                   substrate %in% substrate_ ~ "substrate",
+                                   substrate %in% other ~ "other",
+                                   substrate %in% turf ~ "turf",
+                                   substrate %in% cyanos ~ "cyanos",
+                                   substrate %in% dead_coral ~ "dead_coral"))
+
+
+
+
+dat %>% 
+  filter(is.na(benthic_group))
+```
+
+Is `transect` a unique ID, i.e. it occurs only once per survey year and site?
+
+```{r}
+dat %>% 
+  dplyr::select(-substrate, -benthic_group, -proportion) %>% 
+  distinct() %>% 
+  group_by(year, season, marine_area, habitat, transect) %>% 
+  summarise(n = n()) %>% 
+  filter(n > 1)
+```
+
+Can data be grouped by date? I.e. all surveys per area/habitat/year/season at same date?
+
+```{r}
+dat %>% 
+  group_by(year, marine_area, habitat, season) %>% 
+  summarize(n_dates = length(unique(date))) %>% 
+  filter(n_dates != 1)
+```
+
+Nope, not for year == 2012, marine_area == "Tiahura", habitat == "Outer slope"
+
+```{r}
+dat %>% 
+  filter(year == 2012, marine_area == "Tiahura", habitat == "Outer slope") 
+```
+
+Manually reset to everything to 2012-03-09 (from 2012-03-08 for some)
+
+```{r}
+dat$date[
+    dat$year == 2012 &
+    dat$marine_area == "Tiahura" &
+    dat$habitat == "Outer slope" &
+    dat$date ==  as.Date("2012-03-08")] <- as.Date("2012-03-09")
+```
+
+```{r}
+plot_mm_overview <- dat %>% 
+  group_by(year, marine_area, habitat, season) %>% 
+  summarize(n_transects = length(unique(transect))) %>% 
+  ungroup() %>% 
+  complete(year,  marine_area, habitat, season) %>% 
+  mutate(n_transects = ifelse(is.na(n_transects), 0, n_transects)) %>% 
+  ggplot(aes(x = year, y = n_transects))+
+  geom_col(aes(y = 3), fill = "darkred")+
+  geom_col(fill = "darkgreen")+
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf),
+            fill = NA, inherit.aes = FALSE,col='grey',alpha=.6) +
+  geom_hline(yintercept = c(0:3), col = "white")+
+  facet_grid(marine_area ~ habitat +  season)+
+  labs(y = "# transects", caption = "Missing quadrats in red")+
+  theme_minimal();plot_mm_overview
+```
+
+Filter out Atiha (Inner Bommie) and season Oct
+
+```{r}
+dat <- dat %>% 
+  filter(season != "Oct", marine_area != "Atiha") %>% 
+  dplyr::select(-season)
+```
+
+Replot replication
+
+```{r}
+plot_mm_overview_sel <- dat %>% 
+  group_by(year, marine_area, habitat) %>% 
+  summarize(n_transects = length(unique(transect))) %>% 
+  ungroup() %>% 
+  complete(year,  marine_area, habitat) %>% 
+  mutate(n_transects = ifelse(is.na(n_transects), 0, n_transects)) %>% 
+  ggplot(aes(x = year, y = n_transects))+
+  geom_col(aes(y = 3), fill = "darkred")+
+  geom_col(fill = "darkgreen")+
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf),
+            fill = NA, inherit.aes = FALSE,col='grey',alpha=.6) +
+  geom_hline(yintercept = c(0:3), col = "white")+
+  facet_grid(marine_area ~ habitat)+
+  labs(y = "# transects", caption = "Missing quadrats in red")+
+  theme_minimal();plot_mm_overview_sel
+```
+
+Nurari 2024
+
+```{r}
+dat %>% 
+  mutate(row_number = row_number()) %>% 
+  filter(year == 2023, marine_area == "Nuarei", habitat == "Fringing reef")
+```
+
+No transect 3??
+
+### 100% per survey and quadrat?
+
+```{r}
+dat %>% 
+  group_by(year, marine_area, habitat, transect) %>% 
+  summarise(sum_perc = round(sum(proportion), 2)) %>% 
+  filter(sum_perc != 1) %>% 
+  arrange(year, marine_area, habitat, transect)
+```
+
+```{r}
+dat %>% 
+  saveRDS(here("long_term/data/clean/clean_MooreaMPA.rds"))
+```
