@@ -35,14 +35,15 @@ make_pastel <- function(cols, n = 0.4){
   return(cols)
 }
 
-#wide
-calculate_cover_ba <- function(data){
+
+calculate_genus_cover_ba <- function(data){
   
   data <- data %>% 
     arrange(marine_area, transect, date)
   
   marine_area_s <- unique(data$marine_area)
   transect_s <- unique(data$transect)
+  genus_s <- unique(data$genus)
   
   data_out <- data[0,] %>% 
     select(-proportion)
@@ -50,12 +51,16 @@ calculate_cover_ba <- function(data){
   #
   for (marine_area_i in 1:length(marine_area_s)){
     for (transect_i in 1:length(transect_s)){
-      data_temp <- filter(data, 
-                          marine_area == marine_area_s[marine_area_i], 
-                          transect == transect_s[transect_i]) %>% 
-        arrange(date)
+      for (genus_i in 1:length(genus_s)){
+        data_temp <- filter(data,
+                            marine_area == marine_area_s[marine_area_i], 
+                            transect == transect_s[transect_i],
+                            genus == genus_s[genus_i]) %>% 
+          arrange(date)
       
        rows <- nrow(data_temp)
+       
+       if(rows != 5){stop("Not 5 rows")}
        
        diff_days <- as.numeric(diff(data_temp$date)) 
 
@@ -68,6 +73,7 @@ calculate_cover_ba <- function(data){
          select(-proportion)
        
         data_out <- bind_rows(data_out, data_temp2)
+      }
     }
     
   }
@@ -186,7 +192,7 @@ plot_coral_cover <- dat_c %>%
 
 ## Model Delta
 
-### Changes coral cover outer reef
+### Changes coral cover per genus outer reef
 
 Check always 3 reps
 
@@ -201,16 +207,16 @@ dat_c %>%
 Now, data before after
 
 ```{r}
-dat_coral_delta <- dat_coral_delta %>% 
+dat_genus_delta <- dat_c %>% 
   mutate(proportion = ifelse(proportion == 0, 0.001, proportion)) %>% 
   mutate(proportion = ifelse(proportion == 1, 0.999, proportion)) %>% 
-  calculate_cover_ba()
+  calculate_genus_cover_ba()
 ```
 
 Only after 2018 (survey 2019 just before bleaching)
 
 ```{r}
-dat_coral_delta <- dat_coral_delta %>% 
+dat_genus_delta <- dat_genus_delta %>% 
                   filter(year > 2018) %>% 
   mutate(year = as.factor(year))
 ```
@@ -218,127 +224,176 @@ dat_coral_delta <- dat_coral_delta %>%
 Test different models
 
 ```{r}
-m_ccover1 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area)),
+m_gen1 <- brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area)),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
                 seed = 123,
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover1"))
+              threads = threading(2, static = T),
+                file = here("long_term/models/m_gen1"))
   
-m_ccover2 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area),
-                   phi ~ year * marine_area),
+m_gen2 <- brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ year * marine_area * genus),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
+              threads = threading(2, static = T),
                 seed = 123,
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover2"))
+                file = here("long_term/models/m_gen2"))
 
 
-m_ccover3 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area),
-                   phi ~ year * marine_area + (1|marine_area)),
+m_gen3 <- brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ year * marine_area * genus + (1|marine_area)),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
+              threads = threading(2, static = T),
                 seed = 123,
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover3"))
+                file = here("long_term/models/m_gen3"))
 
 
-m_ccover4 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area),
+m_gen4 <- brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
                    phi ~ (1|marine_area)),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
                 seed = 123,
+              threads = threading(2, static = T),
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover4"))
+                file = here("long_term/models/m_gen4"))
 
 
-m_ccover5 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area),
+m_gen5 <- brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
                    phi ~ year + (1|marine_area)),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
                 seed = 123,
+              threads = threading(2, static = T),
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover5"))
+                file = here("long_term/models/m_gen5"))
 
-m_ccover6 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area),
-                   phi ~ year + marine_area + (1|marine_area)),
+m_gen6 <- brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ genus + (1|marine_area)),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
                 seed = 123,
+              threads = threading(2, static = T),
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover6"))
+                file = here("long_term/models/m_gen6"))
 
 
-m_ccover7 <- brm(bf(mvbind(before, after) ~ year * marine_area + (1|marine_area),
-                   phi ~ (1|marine_area*year)),
+m_gen7 <-brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ year + genus + (1|marine_area)),
                 family = Beta(),
-                data = dat_coral_delta,
+                data = dat_genus_delta,
                 init = 0,
                 iter = 4000,
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.999, 
-                               step_size = 0.001, 
+                control = list(adapt_delta = 0.98, 
                                max_treedepth = 20),
                 seed = 123,
+              threads = threading(2, static = T),
                 backend = "cmdstanr",
-                file = here("long_term/models/m_ccover7"))
+                file = here("long_term/models/m_gen7"))
+
+
+m_gen8 <-brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ year * genus + (1|marine_area)),
+                family = Beta(),
+                data = dat_genus_delta,
+                init = 0,
+                iter = 4000,
+                warmup = 2000,
+                chains = 4,
+                cores = 4,
+                control = list(adapt_delta = 0.98, 
+                               max_treedepth = 20),
+                seed = 123,
+              threads = threading(2, static = T),
+                backend = "cmdstanr",
+                file = here("long_term/models/m_gen8"))
+
+m_gen9 <-brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ year + marine_area + genus + (1|marine_area)),
+                family = Beta(),
+                data = dat_genus_delta,
+                init = 0,
+                iter = 4000,
+                warmup = 2000,
+                chains = 4,
+                cores = 4,
+                control = list(adapt_delta = 0.98, 
+                               max_treedepth = 20),
+                seed = 123,
+              threads = threading(2, static = T),
+                backend = "cmdstanr",
+                file = here("long_term/models/m_gen9"))
+
+m_gen10 <-brm(bf(mvbind(before, after) ~ year * marine_area * genus + (1|marine_area),
+                   phi ~ year*marine_area + year*genus + (1|marine_area)),
+                family = Beta(),
+                data = dat_genus_delta,
+                init = 0,
+                iter = 4000,
+                warmup = 2000,
+                chains = 4,
+                cores = 4,
+                control = list(adapt_delta = 0.98, 
+                               max_treedepth = 20),
+                seed = 123,
+              threads = threading(2, static = T),
+                backend = "cmdstanr",
+                file = here("long_term/models/m_gen10"))
 ```
 
 ```{r}
-summary(m_ccover1)
-pp_check(m_ccover1, resp = "after", ndraws = 100)
-pp_check(m_ccover1, resp = "before", ndraws = 100)
-bayes_R2(m_ccover1)
+summary(m_gen1)
+pp_check(m_gen1, resp = "after", ndraws = 100)
+pp_check(m_gen1, resp = "before", ndraws = 100)
+bayes_R2(m_gen1)
 ```
 
 ```{r}
@@ -389,6 +444,30 @@ bayes_R2(m_ccover7)
 ```
 
 ```{r}
+summary(m_ccover8)
+pp_check(m_ccover8, resp = "after", ndraws = 100)
+pp_check(m_ccover8, resp = "before", ndraws = 100)
+
+bayes_R2(m_ccover8)
+```
+
+```{r}
+summary(m_ccover9)
+pp_check(m_ccover9, resp = "after", ndraws = 100)
+pp_check(m_ccover9, resp = "before", ndraws = 100)
+
+bayes_R2(m_ccover9)
+```
+
+```{r}
+summary(m_ccover10)
+pp_check(m_ccover10, resp = "after", ndraws = 100)
+pp_check(m_ccover10, resp = "before", ndraws = 100)
+
+bayes_R2(m_ccover10)
+```
+
+```{r}
 m_ccover1 <- add_criterion(m_ccover1, "loo", moment_match = TRUE)
 m_ccover2 <- add_criterion(m_ccover2, "loo", moment_match = TRUE)
 m_ccover3 <- add_criterion(m_ccover3, "loo", moment_match = TRUE)
@@ -396,12 +475,13 @@ m_ccover4 <- add_criterion(m_ccover4, "loo", moment_match = TRUE)
 m_ccover5 <- add_criterion(m_ccover5, "loo", moment_match = TRUE)
 m_ccover6 <- add_criterion(m_ccover6, "loo", moment_match = TRUE)
 m_ccover7 <- add_criterion(m_ccover7, "loo", moment_match = TRUE)
+m_ccover8 <- add_criterion(m_ccover8, "loo", moment_match = TRUE)
+m_ccover9 <- add_criterion(m_ccover9, "loo", moment_match = TRUE)
+m_ccover10 <- add_criterion(m_ccover10, "loo", moment_match = TRUE)
+
+loo_compare(m_ccover1, m_ccover2, m_ccover3, m_ccover4, m_ccover5, m_ccover6, m_ccover7,m_ccover8, m_ccover9, m_ccover10)
 
 
-loo_compare(m_ccover1, m_ccover2, m_ccover3, m_ccover4, m_ccover5, m_ccover6, m_ccover7)
-
-
-# 2 and 3 worse, rest similar, 4 best
 ```
 
 ### Plot results
@@ -651,8 +731,8 @@ m_ccover_dhw <- brm(bf(mvbind(before, after) ~ max_dhw_29 + (1|marine_area),
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.95,
-                               max_treedepth = 15),
+                control = list(adapt_delta = 0.98,
+                               max_treedepth = 20),
                 seed = 123,
                 backend = "cmdstanr",
                 file = here("long_term/models/m_ccover_dhw"))
