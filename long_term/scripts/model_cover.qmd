@@ -244,6 +244,7 @@ Plot
 ```{r}
 
 cols_genera <- c(brewer.pal(11, "Set3")[c(1,3,5:7)], "grey70")#last = "Other" to white
+names(cols_genera) <- c(top_5_corals, "Other")
 
 plot_coral_cover <- dat_c %>% 
   group_by(across(c(-proportion, -transect))) %>%  
@@ -718,13 +719,13 @@ ggsave(filename = "cover_regression_dhw.pdf",
        width = 15, height = 10, units  = "cm")
 ```
 
+### Slope
+
 assuming linear relationship over whole course
 
 calculate for min and max in data
 
 ```{r}
-
-
 slope <- epred_draws(m_ccover_19_dhw, 
                          re_formula = NA,
                          newdata = 
