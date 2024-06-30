@@ -1,10 +1,10 @@
 ---
-title: "Untitled"
+title: "Clean data"
 format: html
 editor: visual
 ---
 
-Libraries
+## Libraries
 
 ```{r}
 library(tidyverse)
@@ -13,7 +13,9 @@ library(brms)
 library(readxl)
 ```
 
-## Data
+## Read data
+
+Read data and clean column names
 
 ```{r}
 dat <- read_excel(here("long_term/data/raw/20230926MPAMooreaData_substrate.xlsx"), 
@@ -22,7 +24,7 @@ dat <- read_excel(here("long_term/data/raw/20230926MPAMooreaData_substrate.xlsx"
   janitor::clean_names()
 ```
 
-Clean
+## Check and clean data
 
 Range of benthic cover
 
@@ -30,19 +32,19 @@ Range of benthic cover
 dat$proportion %>% range()
 ```
 
-Check `marine_area` names
+Check names for `marine_area` s
 
 ```{r}
 dat$marine_area %>% unique() %>% sort()
 ```
 
-Check `habitat` names
+Check names `habitat`
 
 ```{r}
 dat$habitat %>% unique() %>% sort()
 ```
 
-### Is `transect` a unique ID, i.e. it occurs only once per survey year and site?
+Is `transect` a unique ID, i.e. it occurs only once per survey year and site?
 
 ```{r}
 dat %>% 
@@ -53,21 +55,27 @@ dat %>%
   filter(n > 1)
 ```
 
-2009 Pihaena Barrier reef 1 Oct
+Not always, check for each case why
+
+**2009 Pihaena Barrier reef 1 Oct**
 
 ```{r}
 dat %>% 
   mutate(row_number = row_number()) %>% 
-  filter(year == 2009, marine_area == "Pihaena", habitat == "Barrier reef", transect == 1, season == "Oct")
+  filter(year == 2009, 
+         marine_area == "Pihaena", 
+         habitat == "Barrier reef", 
+         transect == 1, 
+         season == "Oct")
 ```
 
-Typo. 2009-08-08 should be 2009-09-08 (consecutive row_numbers)
+Seems to be a typo. 2009-08-08 should be 2009-09-08 (consecutive row_numbers). Change manually
 
 ```{r}
 dat$date[which(dat$date == as.Date("2009-08-08"))] <- as.Date("2009-09-08")#occurs only 1x
 ```
 
-2012 Tiahura Outer slope 1 Mar
+**2012 Tiahura Outer slope 1 Mar**
 
 ```{r}
 dat %>% 
@@ -103,7 +111,7 @@ dat$date[which(
     dat$habitat == "Outer slope")] <- as.Date("2016-04-19")
 ```
 
-2021 Motu Ahi Fringing reef 2 Mar
+**2021 Motu Ahi Fringing reef 2 Mar**
 
 ```{r}
 dat %>% 
@@ -118,7 +126,7 @@ Change date 18074 to 2021-03-23 not 2021-03-18
 dat$date[18074] <- as.Date("2021-03-23")
 ```
 
-### 100% per survey and quadrat?
+**Is the sum of all proportions always 100%?**
 
 ```{r}
 dat %>% 
@@ -128,7 +136,9 @@ dat %>%
   arrange(year, season, marine_area, habitat, transect)
 ```
 
-2021 Tiahura Outer slope 1 or 3\*
+No. Check for each case why
+
+**2021 Tiahura Outer slope 1 or 3\***
 
 ```{r}
 dat %>% 
@@ -137,15 +147,13 @@ dat %>%
 
 ```
 
-´
-
-Row 17615 should be transect 3?
+Row 17615 should be transect 3
 
 ```{r}
 dat$transect[17615] <- 3
 ```
 
-**2016 Mar Tiahura Outer slope 1/ or 3**
+**2016 Mar Tiahura Outer slope 1 or 3**
 
 ```{r}
 dat %>% 
@@ -163,7 +171,7 @@ Row 13216 should be transect 1?
 dat$transect[13216] <- 1
 ```
 
-2009 Oct Motu Ahi Fringing reef 3
+**2009 Oct Motu Ahi Fringing reef 3**
 
 ```{r}
 dat %>% 
@@ -173,7 +181,7 @@ dat %>%
 
 =\> No obvious typo?
 
-2010 Mar Haapiti Barrier reef 2
+**2010 Mar Haapiti Barrier reef 2**
 
 ```{r}
 dat %>% 
@@ -181,7 +189,7 @@ dat %>%
   filter(year == 2010, marine_area == "Haapiti", habitat == "Barrier reef", transect == 2, season == "Mar")
 ```
 
-2014 Mar Gendron Fringing reef 2
+**2014 Mar Gendron Fringing reef 2**
 
 ```{r}
 dat %>% 
@@ -189,7 +197,7 @@ dat %>%
   filter(year == 2014, marine_area == "Gendron", habitat == "Fringing reef", transect == 2, season == "Mar")
 ```
 
-2015 Mar Afareaitu Outer slope 3
+**2015 Mar Afareaitu Outer slope 3**
 
 ```{r}
 dat %>% 
@@ -197,7 +205,7 @@ dat %>%
   filter(year == 2015, marine_area == "Afareaitu", habitat == "Outer slope", transect == 3, season == "Mar")
 ```
 
-2020 Mar Tiahura Outer slope 1
+**2020 Mar Tiahura Outer slope 1**
 
 ```{r}
 dat %>% 
@@ -205,13 +213,13 @@ dat %>%
   filter(year == 2020, marine_area == "Tiahura", habitat == "Outer slope", transect == 1, season == "Mar")
 ```
 
-cheakced in table, 17404 shoudl be t1 not 3
+checked Excel file, row 17404 should be t1 not t3
 
 ```{r}
 dat$transect[17404] <- 1
 ```
 
-2021 Mar Gendron Outer slope 2
+**2021 Mar Gendron Outer slope 2**
 
 ```{r}
 dat %>% 
@@ -219,7 +227,7 @@ dat %>%
   filter(year == 2021, marine_area == "Gendron", habitat == "Outer slope", transect == 2, season == "Mar")
 ```
 
-2021 Mar Gendron Outer slope 3
+**2021 Mar Gendron Outer slope 3**
 
 ```{r}
 dat %>% 
@@ -227,7 +235,7 @@ dat %>%
   filter(year == 2021, marine_area == "Gendron", habitat == "Outer slope", transect == 3, season == "Mar")
 ```
 
-2021 Mar Motu Ahi Barrier reef 3
+**2021 Mar Motu Ahi Barrier reef 3**
 
 ```{r}
 dat %>% 
@@ -235,7 +243,7 @@ dat %>%
   filter(year == 2021, marine_area == "Motu Ahi", habitat == "Barrier reef", transect == 3, season == "Mar")
 ```
 
-### check again 100% per survey and quadrat?
+Check again 100% per survey and quadrat?
 
 ```{r}
 dat %>% 
@@ -245,7 +253,9 @@ dat %>%
   arrange(year, season, marine_area, habitat, transect)
 ```
 
-Check if all groups have consecutive row numbers
+Almost. not possible to resolve rest. ok for now
+
+**Check if all groups have consecutive row numbers**
 
 ```{r}
 dat %>% 
@@ -256,9 +266,7 @@ dat %>%
   
 ```
 
-?
-
-Does year always fit to date?
+**Does year always fit to date?**
 
 ```{r}
 dat %>% 
@@ -268,7 +276,7 @@ dat %>%
 
 yes
 
-Check groups
+**Check groups**
 
 ```{r}
 dat$substrate %>% unique() %>% sort()
@@ -276,7 +284,7 @@ dat$substrate %>% unique() %>% sort()
 
 Inconstant names, as Other, other, Stegastes turf, Stegastes Turf.
 
-Clean up names
+**Clean up names**
 
 ```{r}
 dat <- dat %>% 
@@ -289,7 +297,7 @@ dat <- dat %>%
          substrate = ifelse(substrate == "Dead coral" , "Dead_coral", substrate))#no space
 ```
 
-Clean up genera
+**Clean up genera**
 
 -   Napopora to Porites
 
@@ -306,7 +314,7 @@ dat <- dat %>%
   ungroup()
 ```
 
-Make wide and long again to get data for all genera. Otherwise, for some surveys, no corals remain \> the survey would be excluded when sub-setting to corals (tested, will happen). Like that, it's 0%
+Make wide and long again to get data for all genera. Otherwise, for some surveys, no corals remain \> the survey would be excluded when sub-setting to corals. Like that, it's 0%
 
 ```{r}
 dat <- dat %>% 
@@ -420,6 +428,8 @@ dat$date[
     dat$date ==  as.Date("2012-03-08")] <- as.Date("2012-03-09")
 ```
 
+### Plot data 
+
 ```{r}
 plot_mm_overview <- dat %>% 
   group_by(year, marine_area, habitat, season) %>% 
@@ -476,7 +486,7 @@ dat %>%
 
 No transect 3??
 
-### 100% per survey and quadrat?
+### 100% per survey and quadrat for remaining data?
 
 ```{r}
 dat %>% 
