@@ -4,6 +4,8 @@ format: html
 editor: visual
 ---
 
+## Packages
+
 ```{r}
 library(tidyverse)
 library(here)
@@ -16,7 +18,10 @@ library(fastDummies)
 library(ggstance)
 ```
 
+## Functions
+
 ```{r}
+# theme for ggplot
 theme_andi <- function(){
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -25,13 +30,18 @@ theme_andi <- function(){
         axis.line = element_line(colour = "black" ))
 }
 
+#Function to predict & plot model data
+
 plot_model <- function(data, model, title = ""){
+  
+  #define colours
   
   cols_state <-  c("complete mortality" = "#D55E00",
            "growth" = "#009E73",
            "partial mortality" = "#E69F00",
            "no change" = "grey60")
   
+  # To plot raw data as ticks, dummy code states (one column per state, 0/1 for true false), => pivor longer to have one column for state and one for true/false, => select only true (=1)
   dat_dummy <-  data %>% 
   select(spec_1, dia, state) %>% 
   mutate(state = recode(state,
@@ -45,14 +55,14 @@ plot_model <- function(data, model, title = ""){
   mutate(state = gsub("state_","",state)) %>% 
   filter(dummy != 0)
   
-
+#predict data with model along sequence of diameter
 dat_pred <- model %>% 
   epred_draws(newdata = expand_grid(
     dia = seq(0, 30, length = 200),
     site = unique(data$site)))
 
 
-
+#summarise predictions
 dat_predS <- dat_pred %>% 
   group_by(dia,site, .category) %>% 
   summarise(median = median(.epred, na.rm = T),
@@ -68,6 +78,7 @@ dat_predS <- dat_pred %>%
             ) %>% 
   ungroup()
 
+#and plot
 plot <- dat_predS %>%
   mutate(.category = recode(.category,
                             "died" = "complete mortality",
@@ -103,6 +114,10 @@ return(plot)
 }
 ```
 
+## Data
+
+### Read & setup data
+
 ```{r}
 dat_state_E2B <- read.csv(here("size/data/dat_state_E2B.csv"))
 dat_state_HAA <- read.csv(here("size/data/dat_state_HAA.csv"))
@@ -116,6 +131,10 @@ dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>%
                        "E2B" = "Pihaena"))
 ```
 
+## Models
+
+### 2016 - 2018
+
 ```{r}
 m_state_16_18 <- brm(state ~  s(dia, by = site, k = 4), 
                      data = dat_state %>% 
@@ -127,7 +146,9 @@ m_state_16_18 <- brm(state ~  s(dia, by = site, k = 4),
           chains = 4,
           cores = 4,
           seed = 123,
-          control = list(adapt_delta = 0.95),
+          threads = threading(2, static = T),
+          control = list(adapt_delta = 0.99, 
+                               max_treedepth = 20),
           backend = "cmdstanr")
 
 
@@ -136,6 +157,8 @@ summary(m_state_16_18)
 pp_check(m_state_16_18, ndraws = 100)
 
 ```
+
+### 2018 - 2020
 
 ```{r}
 m_state_18_20 <- brm(state ~  s(dia, by = site, k = 4), 
@@ -148,14 +171,18 @@ m_state_18_20 <- brm(state ~  s(dia, by = site, k = 4),
           chains = 4,
           cores = 4,
           seed = 123,
-          control = list(adapt_delta = 0.95),
+          threads = threading(2, static = T),
+          control = list(adapt_delta = 0.99, 
+                               max_treedepth = 20),
           backend = "cmdstanr")
 
 
-summary(m_state_18_20)
+summary(m_state_18_20)#127 
 #plot(m_state_18_20)
 pp_check(m_state_18_20, ndraws = 100)
 ```
+
+### 2020- 2022
 
 ```{r}
 m_state_20_22 <- brm(state ~  s(dia, by = site, k = 4), 
@@ -167,8 +194,10 @@ m_state_20_22 <- brm(state ~  s(dia, by = site, k = 4),
           file = here("size/models/m_state_20_22"),
           chains = 4,
           cores = 4,
+          threads = threading(2, static = T),
           seed = 123,
-          control = list(adapt_delta = 0.95),
+          control = list(adapt_delta = 0.99, 
+                               max_treedepth = 20),
           backend = "cmdstanr")
 
 
@@ -176,6 +205,10 @@ summary(m_state_20_22)
 #plot(m_state_20_22)
 pp_check(m_state_20_22, ndraws = 100)#not too good. Continue as test
 ```
+
+## Plots
+
+Predict and plot data
 
 ```{r}
 plot_states_before <- plot_model(data = dat_state %>% 
@@ -197,10 +230,14 @@ plot_states_after <- plot_model(data = dat_state %>%
 
 ```
 
+Combine plots
+
 ```{r}
 plot_states = plot_states_before/plot_states_during/plot_states_after
 plot_states
 ```
+
+Save plots
 
 ```{r}
 ggsave(filename = "plot_states.pdf",
