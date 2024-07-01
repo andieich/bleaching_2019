@@ -25,17 +25,25 @@ theme_andi <- function(){
 }
 ```
 
+## Get data
+
 ```{r}
+#get data for both sites
 dat_mort_E2B <- read.csv(here("size/data/dat_mort_E2B.csv"))
 dat_mort_HAA <- read.csv(here("size/data/dat_mort_HAA.csv"))
 
+#and combine
 dat_mort <- bind_rows(dat_mort_HAA, dat_mort_E2B)
 ```
 
+### Clean data
+
 ```{r}
+# subset columns
 dat_size <- dat_mort %>% 
   select(site, quadrat, ID, spec_1, dia, comparison, area_2)
 
+#make new data frame for 2022 data (otherwise, "hidden" in comparison 2020 - 2022)
 dat_size_2022 <- dat_size %>% 
   filter(comparison == "2020_2022") %>% 
   mutate(dia = sqrt(area_2/pi)*2,
@@ -51,6 +59,8 @@ dat_size <- bind_rows(dat_size, dat_size_2022) %>%
   rename(spec = spec_1)
 
 ```
+
+### Plot
 
 ```{r}
 cols_years <- c("2016" = "#E69F00",
@@ -75,6 +85,8 @@ plot_size_distr <- dat_size %>%
   theme(legend.position = "bottom")
 plot_size_distr
 ```
+
+Save plot
 
 ```{r}
 ggsave(filename = "size_distribution.pdf",

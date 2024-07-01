@@ -20,6 +20,7 @@ library(ggstance)
 
 ```{r}
 
+# theme for ggplot
 theme_andi <- function(){
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -28,7 +29,7 @@ theme_andi <- function(){
         axis.line = element_line(colour = "black" ))
 }
 
-#Predict & Plot Data
+#Function to predict & plot model data
 
 pred_plot <- function(data, 
                       model, 
@@ -37,10 +38,12 @@ pred_plot <- function(data,
   
   
   
+  #get maximum diameter
   max_dia <- data %>% 
     pull(dia) %>% 
     max()
 
+  #predict parameters with new data along sequence of diameters and summarize
 pred_mortality <- model %>%
   epred_draws(newdata = expand_grid(dia = seq(0, max_dia, length = 200),
                                     site = unique(data$site)),
@@ -58,12 +61,10 @@ pred_mortality <- model %>%
             u60 = quantile(.epred, 0.8, na.rm = T)) %>% 
   ungroup()
 
-
-
 # plot
 
 plot_mortality <- pred_mortality %>%
-  ggplot(aes(x = dia))+#transform area to size, assuming circles
+  ggplot(aes(x = dia))+
   geom_bar(data = data_bin %>% 
              mutate(p_mort = ifelse(p_mort == 0, 0.01, p_mort)), aes(x = mid, y = p_mort, alpha = log(n_per_bin)), stat = "identity", show.legend = F)+
   geom_text(data = data_bin, aes(y = .05, x = mid, label = n_per_bin), col = "black", size = 3)+
@@ -86,14 +87,17 @@ return(plot_mortality)
 
 ## Data
 
+### Get data
+
 ```{r}
+# read data for mortality and raw data fo both sites
 dat_mort_bin_HAA <- read.csv(here("size/data/dat_mort_bin_HAA.csv"))
 dat_mort_HAA <- read.csv(here("size/data/dat_mort_HAA.csv"))
 
 dat_mort_bin_E2B <- read.csv(here("size/data/dat_mort_bin_E2B.csv"))
 dat_mort_E2B <- read.csv(here("size/data/dat_mort_E2B.csv"))
 
-
+#and combine
 dat_mort_bin <- bind_rows(dat_mort_bin_HAA, dat_mort_bin_E2B) %>% 
   mutate(site = recode(site, 
                        "HAA" = "Haapiti",
@@ -105,6 +109,10 @@ dat_mort <- bind_rows(dat_mort_HAA, dat_mort_E2B) %>%
                        "E2B" = "Pihaena"))
 ```
 
+### Set up data
+
+Select only Pocillopora, too few samples for Acropora
+
 ```{r}
 dat_mort_bin <- dat_mort_bin %>% 
   filter(spec_1 == "Pocillopora")
@@ -113,9 +121,7 @@ dat_mort <- dat_mort %>%
   filter(spec_1 == "Pocillopora")
 ```
 
-## 
-
-## Model
+## GAM model for each comparison
 
 ```{r}
 m_surv_before <- brm(state ~  s(dia, by = site, k = 4) + (1|quadrat), 
@@ -149,7 +155,7 @@ m_surv_during <- brm(state ~  s(dia, by = site, k = 4) + (1|quadrat),
               file = here("size/models/m_surv_during"),
               backend = "cmdstanr")
 
-summary(m_surv_during)
+summary(m_surv_during)#1 div trans, ok
 #plot(m_surv_before)
 pp_check(m_surv_during, ndraws = 100)
 ```
@@ -175,6 +181,8 @@ pp_check(m_surv_after, ndraws = 100)
 
 ## Plot
 
+### 2016 - 2018
+
 ```{r}
 plot_mortality_before <- pred_plot(data = dat_mort %>% 
                                      filter(comparison == "2016_2018"),
@@ -183,6 +191,8 @@ plot_mortality_before <- pred_plot(data = dat_mort %>%
                                      filter(comparison == "2016_2018"),
                               title = "Mortality 2016 - 2018")
 ```
+
+### 2018 - 2020
 
 ```{r}
 plot_mortality_during <- pred_plot(data = dat_mort %>% 
@@ -193,6 +203,8 @@ plot_mortality_during <- pred_plot(data = dat_mort %>%
                               title = "Mortality 2018 - 2020")
 ```
 
+### 2020 - 2022
+
 ```{r}
 plot_mortality_after <- pred_plot(data = dat_mort %>% 
                                      filter(comparison == "2020_2022"),
@@ -202,10 +214,14 @@ plot_mortality_after <- pred_plot(data = dat_mort %>%
                               title = "Mortality 2020 - 2022")
 ```
 
+### Combine plots
+
 ```{r}
 plot_mortality = plot_mortality_before/plot_mortality_during/plot_mortality_after
 plot_mortality
 ```
+
+### Save
 
 ```{r}
 ggsave(filename = "mortality_poci.pdf",
