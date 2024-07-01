@@ -35,7 +35,7 @@ make_pastel <- function(cols, n = 0.4){
   return(cols)
 }
 
-
+# theme for ggplots
 theme_andi <- function(){
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -44,12 +44,16 @@ theme_andi <- function(){
         axis.line = element_line(colour = "black" ))
 }
 
+# get summary for posterior distributions
 brms_summary <- function(x) {
       posterior::summarise_draws(x, "mean", "sd",  ~quantile(.x, probs = c(0.025, 0.975)))
     }
 
 
+# predict data from model to calculate difference in coral cover between two years
+
 predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){ 
+  # grouping varaibles are saved in ...
   
   # Get a list of quoted dots
   group_vars <- enquos(...)  
@@ -64,18 +68,13 @@ predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){
   year_1 <- sym(as.character(years[1]))
   year_2 <- sym(as.character(years[2]))
   
-  #make new df
-  
-    new_data <- .data %>% 
-    dplyr::select(!!!group_vars, year) %>% 
-    distinct() %>% 
-    mutate(row = 1:n())
-
-  
-  
+  #make new df for predictions
+  new_data <- .data %>% 
+  dplyr::select(!!!group_vars, year) %>% 
+  distinct() %>% 
+  mutate(row = 1:n())
 
   # predict data
-
   post_pred <- fitted(.model,
                       newdata = new_data,
                       summary = F) %>%
@@ -97,38 +96,38 @@ predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){
     pivot_wider(names_from = year, values_from = value) %>%
     # compute the ATE contrast
      mutate(tau = !!year_2 - !!year_1) %>%
-    # # compute the average ATE value within each MCMC draw
-      group_by(draw, !!!group_vars) %>%
+    # compute the average ATE value within each MCMC draw
+    group_by(draw, !!!group_vars) %>%
     summarise(ate = mean(tau)) %>%
-    # # remove the draw index column
-     ungroup() %>%
-     select(ate, !!!group_vars)
+    # remove the draw index column
+    ungroup() %>%
+    select(ate, !!!group_vars)
   
+  # summarise if wanted
   if(.get_summary){
-    
     post_pred <- post_pred %>%
       group_by(!!!group_vars) %>%
       brms_summary()
   }
-
 
   return(post_pred)
 
 }
 ```
 
+## Get data
+
 ```{r}
 dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds"))
 dat_meta <- read.csv(here("long_term/data/clean/moorea_mpa_site_metadata.csv"))
 ```
 
-Some overview plots
+## Plot Overview
 
-## Benthic groups
+### Benthic groups
 
 ```{r}
-
-# make data, nicer groups
+# nicer groups
 
 dat_benthic_gr <- dat %>% 
   group_by(year, date, marine_area, habitat, transect, benthic_group) %>% 
@@ -165,9 +164,7 @@ benthic_group_cols <- c("Dead coral" = "grey",
    make_pastel(n = 0.6)
 
 
-
-
-
+# plot data for outer slope
 plot_benthic_cover <- dat_benthic_gr %>% 
   left_join(dat_meta, by = "marine_area") %>% 
   filter(habitat == "Outer slope") %>% 
@@ -181,12 +178,8 @@ plot_benthic_cover <- dat_benthic_gr %>%
   scale_fill_manual(values = benthic_group_cols)+
   guides(fill=guide_legend(title="Benthic group"))+
   geom_vline(aes(xintercept = as.Date(date)), col = "white", linewidth = 0.1)+
-  
   scale_x_date(breaks = "2 years", date_labels = "%y")+
-  
   labs(x = "Year", y = "Benthic cover (%)")+
-  
-  
   facet_ragged_cols(vars(marine_area), vars(coast))+
   theme_minimal()+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
@@ -202,16 +195,16 @@ ggsave(filename = "benthic_cover.pdf",
  
 ```
 
-## Coral cover
+### Coral cover
 
--   only outer slope
+Filter data for outer slope
 
 ```{r}
 dat_c <- dat %>% 
   filter(benthic_group == "coral", habitat == "Outer slope")
 ```
 
-top 5 corals
+Get 5 most common coral genera
 
 ```{r}
 top_5_corals <- dat_c %>% 
@@ -223,7 +216,7 @@ top_5_corals <- dat_c %>%
   pull(substrate)
 ```
 
-dump into others, re-calculate cover
+Dump remaining genera unot into "Others", re-calculate cover
 
 ```{r}
 dat_c <- dat_c %>% 
@@ -252,17 +245,12 @@ plot_coral_cover <- dat_c %>%
   ungroup() %>% 
    mutate(coast = factor(coast, levels = c("West", "North", "East"))) %>% 
   ggplot()+
-
   geom_area(aes(fill = genus, x = as.Date(date), y = cover_perc))+
   scale_fill_manual(values = cols_genera)+
   guides(fill=guide_legend(title="Genus"))+
-
   geom_vline(aes(xintercept = as.Date(date)), col = "white", linewidth = 0.1)+
-  
   scale_x_date(breaks = "2 years", date_labels = "%y")+
-  
   labs(x = "Year", y = "Benthic cover (%)")+
-  
   facet_ragged_cols(vars(marine_area), vars(coast))+
   theme_minimal()+
   theme(legend.position = "bottom", 
@@ -271,19 +259,19 @@ plot_coral_cover <- dat_c %>%
         panel.grid.minor = element_blank(),
         axis.ticks = element_line(colour = "black", size = 0.2),
         panel.border = element_rect(fill=NA));plot_coral_cover
-```
 
-```{r}
+
 ggsave(filename = "coralgenera_cover.pdf",
        plot = plot_coral_cover, 
        path = here("long_term/plots/"),
        width = 20, height = 15, units  = "cm")
- 
 ```
 
-## Model Delta
+## Model Delta Cover
 
-### Changes coral cover outer reef
+### Get data for change in coral cover outer reef
+
+Filter data, only outer slope, corals, and data for 2019 ff
 
 ```{r}
 dat_coral_delta <- dat_benthic_gr %>% 
@@ -293,7 +281,7 @@ dat_coral_delta <- dat_benthic_gr %>%
   mutate(year = as.factor(year))
 ```
 
-Check always 3 reps
+Always 3 replicates?
 
 ```{r}
 dat_coral_delta %>% 
@@ -303,7 +291,7 @@ dat_coral_delta %>%
 #all good
 ```
 
-Check range of proportion to test if 0 / 1 (not defined for beta distribution =\> either ordered beta regression or replace)
+Check range of `proportion` (Beta distribution not defined for 0 and 1).
 
 ```{r}
 dat_coral_delta %>% 
@@ -313,7 +301,7 @@ dat_coral_delta %>%
 
 No need to deal with 0s
 
-get DHW data at add
+Get DHW data at to data. Names of sites differ and needs to be aligned
 
 ```{r}
 dat_dhw <- read.csv(here("dhw/data/dat_sites_maxdhw_mur.csv"))
@@ -343,17 +331,17 @@ dat_coral_delta <- dat_coral_delta %>%
 
 ```
 
-One model per group of years because I expect sometimes an increase and sometimes a decrease in cover between the years and I am interested in the short-term changes, not the overall effect.
+### Models
 
--   `as.numeric(factor(year))` to code the yeas as `1` and `2`
+One model per group of years because I expect sometimes an increase and sometimes a decrease in cover between the years and I am interested in the short-term changes, not the overall effect.
 
 -   `0 +` in formula because predictors are not centered
 
 ```{r}
 
 m_ccover_19 <- brm(bf(proportion ~  0 + marine_area + 
-                         (1 + factor(year)|marine_area),
-                       phi ~  (1 + factor(year)|marine_area)),
+                         (0 + factor(year)|marine_area),
+                       phi ~  (0 + factor(year)|marine_area)),
                 family = Beta(),
                 data = dat_coral_delta %>% 
                   filter(year %in% 2019:2020),
@@ -370,8 +358,8 @@ m_ccover_19 <- brm(bf(proportion ~  0 + marine_area +
                 backend = "cmdstanr")
 
 m_ccover_20 <- brm(bf(proportion ~  0 + marine_area + 
-                         (1 + factor(year)|marine_area),
-                       phi ~  (1 + factor(year)|marine_area)),
+                         (0 + factor(year)|marine_area),
+                       phi ~  (0 + factor(year)|marine_area)),
                 family = Beta(),
                 data = dat_coral_delta %>% 
                   filter(year %in% 2020:2021),
@@ -388,8 +376,8 @@ m_ccover_20 <- brm(bf(proportion ~  0 + marine_area +
                 backend = "cmdstanr")
 
 m_ccover_21 <- brm(bf(proportion ~  0 + marine_area + 
-                         (1 + factor(year)|marine_area),
-                       phi ~  (1 + factor(year)|marine_area)),
+                         (0 + factor(year)|marine_area),
+                       phi ~  (0 + factor(year)|marine_area)),
                 family = Beta(),
                 data = dat_coral_delta %>% 
                   filter(year %in% 2021:2022),
@@ -406,8 +394,8 @@ m_ccover_21 <- brm(bf(proportion ~  0 + marine_area +
                 backend = "cmdstanr")
 
 m_ccover_22 <- brm(bf(proportion ~  0 + marine_area + 
-                         (1 + factor(year)|marine_area),
-                       phi ~  (1 + factor(year)|marine_area)),
+                         (0 + factor(year)|marine_area),
+                       phi ~  (0 + factor(year)|marine_area)),
                 family = Beta(),
                 data = dat_coral_delta %>% 
                   filter(year %in% 2022:2023),
@@ -422,42 +410,24 @@ m_ccover_22 <- brm(bf(proportion ~  0 + marine_area +
                 seed = 123,
                 file = here("long_term/models/m_ccover_22"),
                 backend = "cmdstanr")
-# some divergent transitions. 
-# try non centered 
 
-m_ccover_22_nc <- brm(bf(proportion ~  1 + marine_area + 
-                         (1 + factor(year)|marine_area),
-                       phi ~  (1 + factor(year)|marine_area)),
-                family = Beta(),
-                data = dat_coral_delta %>% 
-                  filter(year %in% 2022:2023),
-                init = 0,
-                iter = 4000,
-                warmup = 2000,
-                chains = 4,
-                cores = 4,
-                control = list(adapt_delta = 0.99, 
-                               max_treedepth = 20),
-                threads = threading(2, static = T),
-                seed = 123,
-                file = here("long_term/models/m_ccover_22_nc"),
-                backend = "cmdstanr")
+
 ```
 
 ```{r}
-summary(m_ccover_19)
+summary(m_ccover_19)# 2 div trans, that  ESS good
 pp_check(m_ccover_19, ndraws = 100)
 bayes_R2(m_ccover_19)
 
-summary(m_ccover_20)
+summary(m_ccover_20) # 30 div trans, that  ESS good
 pp_check(m_ccover_20, ndraws = 100)
 bayes_R2(m_ccover_20)
 
-summary(m_ccover_21)
+summary(m_ccover_21)# 11 div trans, that  ESS good
 pp_check(m_ccover_21, ndraws = 100)
 bayes_R2(m_ccover_21)
 
-summary(m_ccover_22)
+summary(m_ccover_22) # 1 div trans, that  ESS good
 pp_check(m_ccover_22, ndraws = 100)
 bayes_R2(m_ccover_22)
 
@@ -626,14 +596,16 @@ ggsave(filename = "plot_change_coast2.pdf",
 
 ## DHW
 
+### Model
+
 additionally include `max_dhw_29`
 
 -   if 0 + max_dhw_29 only overall slope. I want slope per year
 
 ```{r}
 m_ccover_19_dhw <- brm(bf(proportion ~  0 + max_dhw_29 * factor(year) + 
-                         (1 + factor(year)|marine_area),
-                       phi ~  (1 + factor(year)|marine_area)),
+                         (0 + factor(year)|marine_area),
+                       phi ~  (0 + factor(year)|marine_area)),
                 family = Beta(),
                 data = dat_coral_delta %>% 
                   filter(year %in% 2019:2020),
@@ -642,7 +614,8 @@ m_ccover_19_dhw <- brm(bf(proportion ~  0 + max_dhw_29 * factor(year) +
                 warmup = 2000,
                 chains = 4,
                 cores = 4,
-                control = list(adapt_delta = 0.9),
+                control = list(adapt_delta = 0.95,
+                               max_treedepth = 20),
                 threads = threading(2, static = T),
                 seed = 123,
                 file = here("long_term/models/m_ccover_19_dhw"),
@@ -650,7 +623,7 @@ m_ccover_19_dhw <- brm(bf(proportion ~  0 + max_dhw_29 * factor(year) +
 ```
 
 ```{r}
-summary(m_ccover_19_dhw)
+summary(m_ccover_19_dhw)# 4 div trans, 
 pp_check(m_ccover_19_dhw, ndraws = 100)
 bayes_R2(m_ccover_19_dhw)
 ```
@@ -658,19 +631,20 @@ bayes_R2(m_ccover_19_dhw)
 ### Plot
 
 ```{r}
-
+# make new data frame with sequence along max_DHW values
 new_data_dhw <- expand_grid(max_dhw_29 = seq(min(dat_coral_delta$max_dhw_29)-0.1, 
                                      max(dat_coral_delta$max_dhw_29)+0.1, 
                                      length = 100),
-                            year = factor(2019:2020))
+                            year = factor(2019:2020))#
 
+#predict
 pred_dhw <-  epred_draws(m_ccover_19_dhw, newdata = new_data_dhw, re_formula = NA) %>% 
   ungroup() %>% 
   select(max_dhw_29, .draw, .epred, year) %>% 
   pivot_wider(names_from = year, values_from = .epred) %>% 
   mutate(delta = (`2020` - `2019`))
-  #mutate(delta =  `2020`)
 
+#summarise predictions
 pred_dhwS <- pred_dhw %>% 
   group_by(max_dhw_29) %>% 
   summarise(median = median(delta, na.rm = T),
@@ -684,6 +658,7 @@ pred_dhwS <- pred_dhw %>%
             u60 = quantile(delta, 0.8, na.rm = T)) %>% 
   ungroup()
 
+#calculate delta values
 dat_sel_dhwS <- dat_coral_delta %>% 
   select(marine_area, proportion, year, coast, max_dhw_29) %>% 
   filter(year %in% c(2019:2020)) %>% 
@@ -691,7 +666,7 @@ dat_sel_dhwS <- dat_coral_delta %>%
   mutate(delta =  `2020`- `2019`)  
   
 
-
+#plot
 plot_dhw <- pred_dhwS %>%
   ggplot(aes(x = max_dhw_29))+
   geom_hline(yintercept = 0, linetype = "11", col = "grey")+
@@ -721,9 +696,7 @@ ggsave(filename = "cover_regression_dhw.pdf",
 
 ### Slope
 
-assuming linear relationship over whole course
-
-calculate for min and max in data
+Assuming linear relationship over whole course of max_DHW calculate slope between lowest max_DHW value and highest
 
 ```{r}
 slope <- epred_draws(m_ccover_19_dhw, 
@@ -745,7 +718,7 @@ slope %>%
   brms_summary()
 
 above_0 <- length(which(slope$slope_val > 0))/nrow(slope) %>% 
-  round(2)#0
+  round(2)*100#0.1625 %
 
 
 
