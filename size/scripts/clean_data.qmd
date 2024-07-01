@@ -1,0 +1,660 @@
+---
+title: "Clean Data"
+format: html
+editor: visual
+---
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+library(brms)
+library(tidybayes)
+library(fastDummies)
+library(ggokabeito)
+library(patchwork)
+library(cmdstanr)
+```
+
+## Functions
+
+```{r}
+# Summary function that returns mean, n, and se
+mean_se <- function(data, col){
+  col <- enquo(col)
+  
+  data %>% 
+    summarize(
+      mean = mean(!!col, na.rm=T),
+      n=sum(!is.na(!!col)),
+      se=sd(!!col, na.rm=T)/sqrt(sum(!is.na(!!col))))
+}
+
+
+#function to read and set up data exported with TagLab. 
+read_data <- function(files){
+  
+  dat <- read.csv(files) %>% 
+    mutate(file = basename(files))
+  
+  #  Unique genet ID, two clumns per year (ID and area). Since four years are considered, set up names accordingly
+  
+  names(dat) <- c("genet_ID",
+                   "spec_1",
+                   "ID_1",
+                   "area_1",
+                   "spec_2",
+                   "ID_2",
+                   "area_2",
+                   "spec_3",
+                   "ID_3",
+                   "area_3",
+                   "spec_4",
+                   "ID_4",
+                   "area_4",
+                   "file")
+  
+  
+  dat <- dat %>% 
+    #add filename
+    mutate(file = substr(file,1,nchar(file)-4)) %>% 
+    #Make uniqe genet ID by adding qudrat ID
+    mutate(genet_ID = paste(file, genet_ID, sep = "_")) %>% 
+    dplyr::select(-file)
+  
+  return(dat)
+}
+
+# One csv file is exported per quadrat and 20 quadrats and files exist per site. This function combines these data using the read_data() function.
+
+combine_data <- function(path){
+  
+  #Uses read_data() to read and combine all csv files in a folder (path)
+  
+  files <- list.files(path,full.names = T, pattern = ".csv")
+
+  data <- do.call(rbind,
+                  lapply(files, read_data))
+
+  return(data)
+}
+
+
+# This function extracts information from the "raw" TagLab files. This fucntion uses df containing data for a pair of years (before vs after)
+get_infos <- function(data, buffer = 0.1){
+  
+  # gets infos from the TagLab genet tables and assigns categories to the change in area
+  # No change (wit a buffer of 10%, i.e.+ 5% area change and - 5% area) ==> No change
+  # Area shrinks ==> partial mortality
+  # Area increases ==> growth
+  # Genet not in second year ==> complete mortality
+  # new coral ==> born
+  
+  #divide buffer in + and - direction
+  thresh <- buffer/2
+  
+  # make new columns for state category and the relative change
+  data$state <- NA
+  data$rel_change <- NA
+  
+  #loop through data to get info
+  for (i in 1:nrow(data)){
+
+    #if genet inly in second year = born
+    if (data$area_1[i] == 0 & data$area_2[i] > 0){
+      
+      data$state[i] <-  "born"
+      #In this case, assign genus name also to year 1 althought that colony did not yet exist in the first year. This is done do make the df more consistand and easier plotting
+      data$spec_1[i] <- data$spec_2[i]
+      data$area_1[i] <- data$area_2[i]
+      
+      #if area is 0 in second year abut > 0 before => dead
+    } else if (data$area_2[i] == 0 & data$area_1[i] > 0) {
+      
+      data$state[i] <-  "died"
+      
+      # If colony exists in both years
+    } else if (data$area_1[i] > 0 & data$area_2[i] > 0){
+      
+      #calculate the relative change compared to the area in the first year
+      data$rel_change[i] <- (data$area_2[i] - data$area_1[i]) / data$area_1[i] 
+      
+      # if the relative change is more negative than the defined threshold ==> "shrunk"
+      if (data$rel_change[i] < -thresh){
+        
+        data$state[i] <-  "shrunk"
+        
+        # if it is larger than the threshold ==> "grew"
+      } else if (data$rel_change[i] > thresh) {
+        
+        data$state[i] <-  "grew"
+        
+        # if within the threshold = no change
+      } else {
+        
+        data$state[i] <-  "no change"
+        
+      }
+      
+      # give error if none of the above cases applies
+    } else {
+      
+      stop("Cannot assign a state!")
+    }
+  }
+    
+    return(data)
+  
+}
+
+
+
+# The TagLab data contains multiple entries in cells if a genet split into several colonies or if colonies merged. This is the case for the colum conatining the genus name (e.g. "Pocillopora Pocillopora Pocillopora" and for the area, e.g. "2.1 4.3 7.8".) The functions selects only on genus name and sums up the areas. This function is called from another function (combine_multiple_entries()) which loops over the rows in several columns
+
+# Input:
+  # cell: The cell of a data frame that should be combines
+  # row_num: The row number, not necessary for manipulations but helps to understand what's going on if there is a problem
+  #type: either "character" (for genus/species names) or "numeric" for areas. 
+
+combine_multiple_entries_cell <- function(cell, row_num, type){
+
+  # get the cell content and split by empty spaces
+  content <- str_split(cell, pattern = "  +") %>% 
+    unlist()
+  
+  # only continue if there the cell contains values/characters
+  content <- content[nchar(content) > 0]
+
+  # combine areas
+  if (type == "numeric"){
+    #set to numeric
+    content <- content %>% 
+      as.numeric()
+    
+    # Trigger error if the cell contans non numerical calues (they will be NA after as.numeric())
+    if(length(content) > 1 & any(is.na(content))){
+      
+        stop(paste("Non numerical value in row", row_num))
+      
+      #otherwise, calculate sum
+    } else {
+        content <- content %>% 
+          sum(na.rm = T)
+    }
+    
+    # if cell is character get the unique values
+    
+  } else if (type == "character"){
+    content <- unique(content)
+    
+     # if the cell contains now more than one value, there are different species/genus names in the cell. Trigger a warning
+    if(length(content) > 1){
+      warning(paste("There's multiple species names in row", row_num))
+    }
+  } else{
+    #Error if not character or number
+    stop("type not defined or not numeric or character")
+  }
+
+  # if cell is formatted as character but doenst contain any information, set to NA
+  if(identical(nchar(content), integer(0))){
+    content <-  NA
+  }
+  return(content)
+}
+
+
+# This fucntioon loopes over the colums in the df for the genus/species names in both years and areas in both years and uses above combine_multiple_entries_cell() function to combine the information
+
+combine_multiple_entries <- function(data){
+  # calls the combine_multiple_entries_cell() function for each row
+  
+  for (row_i in 1:nrow(data)){
+    
+    data$area_1[row_i] <- combine_multiple_entries_cell(cell = data$area_1[row_i], 
+                            type = "numeric", 
+                            row_num = row_i) %>% 
+      as.numeric()
+    
+    data$area_2[row_i] <- combine_multiple_entries_cell(cell = data$area_2[row_i], 
+                            type = "numeric", 
+                            row_num = row_i) %>% 
+      as.numeric()
+    
+    data$area_3[row_i] <- combine_multiple_entries_cell(cell = data$area_3[row_i], 
+                            type = "numeric", 
+                            row_num = row_i) %>% 
+      as.numeric()
+    
+    data$area_4[row_i] <- combine_multiple_entries_cell(cell = data$area_4[row_i], 
+                            type = "numeric", 
+                            row_num = row_i) %>% 
+      as.numeric()
+    
+    data$spec_1[row_i] <- combine_multiple_entries_cell(cell = data$spec_1[row_i], 
+                            type = "character", 
+                            row_num = row_i)
+    
+    data$spec_2[row_i] <- combine_multiple_entries_cell(cell = data$spec_2[row_i], 
+                            type = "character", 
+                            row_num = row_i)
+    
+    data$spec_3[row_i] <- combine_multiple_entries_cell(cell = data$spec_3[row_i], 
+                            type = "character", 
+                            row_num = row_i)
+    data$spec_4[row_i] <- combine_multiple_entries_cell(cell = data$spec_4[row_i], 
+                            type = "character", 
+                            row_num = row_i)
+    
+  }
+  
+  # make sure areas are set to numeric
+  data <- data %>% 
+     mutate_at(vars(starts_with("area")), as.numeric) 
+  
+  return(data)
+
+}
+
+
+# calculates the probability of mortality for bins diameter of raw data
+
+get_binned_data <- function(data){
+  data %>% 
+    #divide diameter into bins
+    mutate(binned_dia = cut(dia, breaks=seq(0, 38, by = 2))) %>% 
+    #group by bin and species/genus and cmparison (year 1 vs year 2) for summaries
+    group_by(spec_1, comparison, site, binned_dia) %>% 
+    #get number of colonies per bin
+    mutate(n_per_bin = n()) %>%
+    #get number per size class and status
+    group_by(spec_1, comparison,site, binned_dia, n_per_bin, state) %>% 
+    summarise(n = n()) %>%
+    ungroup() %>% 
+    #calculate relative mortality ( = probability of portality) for each bin
+    pivot_wider(names_from = state, values_from = n) %>% 
+    mutate(p_mort = died / n_per_bin) %>% 
+    filter_at(vars(died, survived),any_vars(!is.na(.))) %>% 
+    mutate(p_mort = ifelse(is.na(p_mort), 0, p_mort)) %>% 
+    select(-died, -survived) %>% 
+    #helper column containing the center of the coral diametr bin, used for plots
+    mutate(mid = sapply(str_extract_all(.data$binned_dia, "-?[0-9.]+"), function(x) mean(as.numeric(x)))) 
+  
+}
+
+```
+
+## Data
+
+Combine the exported TagLab tables (1 tale per quadrat, 20 quadrats per site) and extract states.
+
+### E2B
+
+#### Read and set up data
+
+```{r}
+# read data
+data_E2B <- combine_data(here("size/data/raw/2024_06_05_export/E2B"))
+
+#combine multiple information per cell
+data_E2B <- data_E2B %>% 
+  combine_multiple_entries()
+
+#one df for each pair of years, re-set names of columns, get status info
+
+data_16_18_E2B <- data_E2B %>% 
+  select(c(1:7)) %>% 
+  filter_at(vars(spec_1, spec_2),any_vars(!is.na(.))) %>% 
+  get_infos() %>% 
+  mutate(comparison = "2016_2018",
+         site = "E2B")
+
+data_18_20_E2B <- data_E2B %>% 
+  select(c(1, 5:10)) %>% 
+  filter_at(vars(spec_2, spec_3),any_vars(!is.na(.))) %>% 
+  rename("spec_1" = "spec_2",
+         "area_1" = "area_2",
+         "ID_1" = "ID_2",
+         "spec_2" = "spec_3",
+         "area_2" = "area_3",
+         "ID_2" = "ID_3") %>% 
+  get_infos()%>% 
+  mutate(comparison = "2018_2020",
+         site = "E2B")
+  
+
+data_20_22_E2B <- data_E2B %>% 
+  select(c(1, 8:13)) %>%   
+  filter_at(vars(spec_3, spec_4),any_vars(!is.na(.))) %>% 
+  rename("spec_1" = "spec_3",
+         "area_1" = "area_3",
+         "ID_1" = "ID_3",
+         "spec_2" = "spec_4",
+         "area_2" = "area_4",
+         "ID_2" = "ID_4") %>% 
+  get_infos() %>% 
+  mutate(comparison = "2020_2022",
+         site = "E2B")
+```
+
+#### Check data
+
+Get overview of occurrences of each category
+
+```{r}
+data_16_18_E2B %>% 
+  group_by(spec_1, state) %>% 
+  count() %>% 
+  pivot_wider(names_from = state, 
+              values_from = n) %>% 
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_18_20_E2B %>% 
+  group_by(spec_1, state) %>% 
+  count() %>% 
+  pivot_wider(names_from = state, 
+              values_from = n) %>% 
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_20_22_E2B %>% 
+  group_by(spec_1, state) %>% 
+  count() %>% 
+  pivot_wider(names_from = state, 
+              values_from = n) %>% 
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+```
+
+Plot relative change. Mainly to find unrealistic values
+
+```{r}
+data_16_18_E2B %>% 
+  ggplot(aes(x = rel_change))+
+  geom_histogram(bins = 100)+
+  geom_vline(xintercept = 0, col = "darkred")+
+  facet_wrap(~spec_1)+
+  theme_minimal()
+
+data_16_18_E2B %>% 
+  filter(rel_change > 20)# ok
+
+data_18_20_E2B %>% 
+  ggplot(aes(x = rel_change))+
+  geom_histogram(bins = 100)+
+  geom_vline(xintercept = 0, col = "darkred")+
+  facet_wrap(~spec_1)+
+  theme_minimal()
+
+data_20_22_E2B %>% 
+  ggplot(aes(x = rel_change))+
+  geom_histogram(bins = 100)+
+  geom_vline(xintercept = 0, col = "darkred")+
+  facet_wrap(~spec_1)+
+  theme_minimal()
+```
+
+Plot the categories
+
+```{r}
+data_16_18_E2B %>% 
+  ggplot(aes(x = area_1, col = state))+
+  geom_histogram(bins = 100, fill = NA)+
+  facet_wrap(~spec_1)+
+  scale_color_okabe_ito()+
+  theme_minimal()
+```
+
+```{r}
+data_18_20_E2B %>% 
+  ggplot(aes(x = area_1, col = state))+
+  geom_histogram(bins = 100, fill = NA)+
+  facet_wrap(~spec_1)+
+  scale_color_okabe_ito()+
+  theme_minimal()
+```
+
+```{r}
+data_20_22_E2B %>% 
+  ggplot(aes(x = area_1, col = state))+
+  geom_histogram(bins = 100, fill = NA)+
+  facet_wrap(~spec_1)+
+  scale_color_okabe_ito()+
+  theme_minimal()
+```
+
+Now, three data sets are generated for each pair of years
+
+1.  only mortality
+2.  binned raw data
+3.  more detailed categories
+
+#### Mortality data set
+
+-   filter out all newly born corals
+
+-   consider all corals in which area in year 2 is less than 90% of the area in year 1 as "dead", otherwise, survived
+
+-   calculate theoretical diameter of colony assuming that the area is circular shape
+
+```{r}
+dat_mort_E2B <- bind_rows(data_16_18_E2B,
+                        data_18_20_E2B,
+                        data_20_22_E2B) %>% 
+  filter(state != "born") %>% 
+  mutate(state = ifelse(!is.na(rel_change) & rel_change <= -0.9, 
+                        "died", 
+                        state)) %>% 
+  mutate(state = ifelse(state != "died", 
+                        "survived",
+                        state)) %>% 
+  mutate(dia = sqrt(area_1/pi)*2) %>% 
+  separate(genet_ID,c("site", "quadrat", "ID"), sep = "_")
+
+```
+
+#### Binned mortality
+
+```{r}
+dat_mort_bin_E2B <- get_binned_data(dat_mort_E2B)
+```
+
+#### States
+
+```{r}
+dat_state_E2B <- bind_rows(data_16_18_E2B,
+                           data_18_20_E2B,
+                           data_20_22_E2B)
+```
+
+Save data
+
+```{r}
+write.csv(dat_mort_E2B, file = here("size/data/dat_mort_E2B.csv"), row.names = F)
+write.csv(dat_mort_bin_E2B, file = here("size/data/dat_mort_bin_E2B.csv"), row.names = F)
+write.csv(dat_state_E2B, file = here("size/data/dat_state_E2B.csv"), row.names = F)
+```
+
+### Haapiti
+
+#### Read and set up data
+
+```{r}
+# read data
+data_HAA <- combine_data(here("size/data/raw/2024_06_05_export/HAA"))
+
+#combine multiple information per cell
+data_HAA <- data_HAA %>% 
+  combine_multiple_entries()
+
+#one df for each pair of years, re-set names of columns, get status info
+
+data_16_18_HAA <- data_HAA %>% 
+  select(c(1:7)) %>% 
+  filter_at(vars(spec_1, spec_2),any_vars(!is.na(.))) %>% 
+  get_infos() %>% 
+  mutate(comparison = "2016_2018",
+         site = "HAA")
+
+data_18_20_HAA <- data_HAA %>% 
+  select(c(1, 5:10)) %>% 
+  filter_at(vars(spec_2, spec_3),any_vars(!is.na(.))) %>% 
+  rename("spec_1" = "spec_2",
+         "area_1" = "area_2",
+         "ID_1" = "ID_2",
+         "spec_2" = "spec_3",
+         "area_2" = "area_3",
+         "ID_2" = "ID_3") %>% 
+  get_infos()%>% 
+  mutate(comparison = "2018_2020",
+         site = "HAA")
+  
+
+data_20_22_HAA <- data_HAA %>% 
+  select(c(1, 8:13)) %>%   
+  filter_at(vars(spec_3, spec_4),any_vars(!is.na(.))) %>% 
+  rename("spec_1" = "spec_3",
+         "area_1" = "area_3",
+         "ID_1" = "ID_3",
+         "spec_2" = "spec_4",
+         "area_2" = "area_4",
+         "ID_2" = "ID_4") %>% 
+  get_infos() %>% 
+  mutate(comparison = "2020_2022",
+         site = "HAA")
+```
+
+#### Check data
+
+Get overview of occurrences of each category
+
+```{r}
+data_16_18_HAA %>% 
+  group_by(spec_1, state) %>% 
+  count() %>% 
+  pivot_wider(names_from = state, 
+              values_from = n) %>% 
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_18_20_HAA %>% 
+  group_by(spec_1, state) %>% 
+  count() %>% 
+  pivot_wider(names_from = state, 
+              values_from = n) %>% 
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_20_22_HAA %>% 
+  group_by(spec_1, state) %>% 
+  count() %>% 
+  pivot_wider(names_from = state, 
+              values_from = n) %>% 
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+```
+
+Plot relative change. Mainly to find unrealistic values
+
+```{r}
+data_16_18_HAA %>% 
+  ggplot(aes(x = rel_change))+
+  geom_histogram(bins = 100)+
+  geom_vline(xintercept = 0, col = "darkred")+
+  facet_wrap(~spec_1)+
+  theme_minimal()
+
+data_16_18_HAA %>% 
+  filter(rel_change > 20)# ok
+
+data_18_20_HAA %>% 
+  ggplot(aes(x = rel_change))+
+  geom_histogram(bins = 100)+
+  geom_vline(xintercept = 0, col = "darkred")+
+  facet_wrap(~spec_1)+
+  theme_minimal()
+
+data_20_22_HAA %>% 
+  ggplot(aes(x = rel_change))+
+  geom_histogram(bins = 100)+
+  geom_vline(xintercept = 0, col = "darkred")+
+  facet_wrap(~spec_1)+
+  theme_minimal()
+```
+
+Plot the categories
+
+```{r}
+data_16_18_HAA %>% 
+  ggplot(aes(x = area_1, col = state))+
+  geom_histogram(bins = 100, fill = NA)+
+  facet_wrap(~spec_1)+
+  scale_color_okabe_ito()+
+  theme_minimal()
+```
+
+```{r}
+data_18_20_HAA %>% 
+  ggplot(aes(x = area_1, col = state))+
+  geom_histogram(bins = 100, fill = NA)+
+  facet_wrap(~spec_1)+
+  scale_color_okabe_ito()+
+  theme_minimal()
+```
+
+```{r}
+data_20_22_HAA %>% 
+  ggplot(aes(x = area_1, col = state))+
+  geom_histogram(bins = 100, fill = NA)+
+  facet_wrap(~spec_1)+
+  scale_color_okabe_ito()+
+  theme_minimal()
+```
+
+Now, three data sets are generated for each pair of years
+
+1.  only mortality
+2.  binned raw data
+3.  more detailed categories
+
+#### Mortality data set
+
+-   filter out all newly born corals
+
+-   consider all corals in which area in year 2 is less than 90% of the area in year 1 as "dead", otherwise, survived
+
+-   calculate theoretical diameter of colony assuming that the area is circular shape
+
+```{r}
+dat_mort_HAA <- bind_rows(data_16_18_HAA,
+                        data_18_20_HAA,
+                        data_20_22_HAA) %>% 
+  filter(state != "born") %>% 
+  mutate(state = ifelse(!is.na(rel_change) & rel_change <= -0.9, 
+                        "died", 
+                        state)) %>% 
+  mutate(state = ifelse(state != "died", 
+                        "survived",
+                        state)) %>% 
+  mutate(dia = sqrt(area_1/pi)*2) %>% 
+  separate(genet_ID,c("site", "quadrat", "ID"), sep = "_")
+
+```
+
+#### Binned mortality
+
+```{r}
+dat_mort_bin_HAA <- get_binned_data(dat_mort_HAA)
+```
+
+#### States
+
+```{r}
+dat_state_HAA <- bind_rows(data_16_18_HAA,
+                           data_18_20_HAA,
+                           data_20_22_HAA)
+```
+
+Save data
+
+```{r}
+write.csv(dat_mort_HAA, file = here("size/data/dat_mort_HAA.csv"), row.names = F)
+write.csv(dat_mort_bin_HAA, file = here("size/data/dat_mort_bin_HAA.csv"), row.names = F)
+write.csv(dat_state_HAA, file = here("size/data/dat_state_HAA.csv"), row.names = F)
+```
