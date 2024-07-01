@@ -17,10 +17,12 @@ library(bayesplot)
 library(ggragged)
 library(ggridges)
 
+# check how much of distribution is above 0
 above_0 <- function(x){
   length(which(x > 0))/length(x)
-  }
+}
 
+#get summary
 brms_summary <- function(x) {
       posterior::summarise_draws(x, "mean", "sd",  ~quantile(.x, probs = c(0.025, 0.975)))
     }
@@ -28,43 +30,16 @@ brms_summary <- function(x) {
 
 #make colours less intense
 make_pastel <- function(cols, n = 0.4){
-  
   names <- names(cols)
-  
   cols <- col2rgb(cols)
-  
-# transform to HSV space
+  # transform to HSV space
   cols <- rgb2hsv(cols)
-  
   cols <- hsv(cols[1,], cols[2,]*n, cols[3,])
-  
   names(cols) <- names
-  
   return(cols)
 }
 
-
-
-plot_model <- function(data){
-  
-  cap <- deparse(substitute(data))
-  
-  plot_ <- data %>%
-  ggplot(aes(y = factor(year+1), 
-             x = delta*100,
-             col = factor(year+1), 
-             fill = factor(year+1))) +
-  geom_vline(xintercept = 0, linetype = "11")+
-    ggtitle(cap)+
-  geom_density_ridges(rel_min_height = 0.02,scale = 1.8, alpha = .8)+
-  labs(y = NULL, x = "Delta (% per year)")+
-  xlim(-100,100)+
-  facet_wrap(~marine_area, ncol = 1)+
-  theme_minimal()
-  
-  ggsave(plot = plot_, path = here("long_term/plots/modelplots"), filename = paste0(cap,".pdf"), width = 20, height = 30, unit = "cm")
-}
-
+# theme for ggplots
 theme_andi <- function(){
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -74,6 +49,8 @@ theme_andi <- function(){
 }
 
 
+
+# predict data from model to calculate difference in coral cover between two years
 predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){ 
   
   # Get a list of quoted dots
@@ -90,14 +67,10 @@ predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){
   year_2 <- sym(as.character(years[2]))
   
   #make new df
-  
-    new_data <- .data %>% 
-    dplyr::select(!!!group_vars, year) %>% 
-    distinct() %>% 
-    mutate(row = 1:n())
-
-  
-  
+  new_data <- .data %>% 
+  dplyr::select(!!!group_vars, year) %>% 
+  distinct() %>% 
+  mutate(row = 1:n())
 
   # predict data
 
@@ -136,20 +109,17 @@ predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){
       brms_summary()
   }
 
-
   return(post_pred)
 
 }
 ```
 
+## Get data
+
 ```{r}
 dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds"))
 dat_meta <- read.csv(here("long_term/data/clean/moorea_mpa_site_metadata.csv"))
 ```
-
-Some overview plots
-
-## Coral cover
 
 -   only outer slope, after 2018
 
@@ -188,7 +158,7 @@ dat_c <- dat_c %>%
   mutate(genus = fct_relevel(genus, "Other", after = Inf)) #set others to end
 ```
 
-Plot
+Plot to see what model will do
 
 ```{r}
 
@@ -202,17 +172,12 @@ plot_coral_cover <- dat_c %>%
   ungroup() %>% 
    mutate(coast = factor(coast, levels = c("West", "North", "East"))) %>% 
   ggplot()+
-
   geom_area(aes(fill = genus, x = as.Date(date), y = cover_perc))+
   scale_fill_manual(values = cols_genera)+
   guides(fill=guide_legend(title="Genus"))+
-
   geom_vline(aes(xintercept = as.Date(date)), col = "white", linewidth = 0.1)+
-  
   scale_x_date(breaks = "2 years", date_labels = "%y")+
-  
   labs(x = "Year", y = "Benthic cover (%)")+
-  
   facet_ragged_cols(vars(marine_area), vars(coast))+
   theme_minimal()+
   theme(legend.position = "bottom", 
@@ -225,7 +190,7 @@ plot_coral_cover <- dat_c %>%
 
 ## Model Delta
 
-### Changes coral cover per genus outer reef
+### Get data
 
 Check always 3 reps
 
@@ -237,7 +202,7 @@ dat_c %>%
 #all good
 ```
 
-Make new df and check range of proportion (Beta not defined for 1 and 0)
+Get DHW data at to data. Names of sites differ and needs to be aligned
 
 ```{r}
 dat_genus_delta <- dat_c 
@@ -266,15 +231,19 @@ dat_dhw <- dat_dhw %>%
 
 dat_genus_delta <- dat_genus_delta %>% 
   select(-coast) %>% 
-  left_join(dat_dhw, by = c("marine_area" = "site")) %>% 
-  mutate(proportion = ifelse(proportion == 0, 0.001, proportion))
-
-
+  left_join(dat_dhw, by = c("marine_area" = "site")) 
 ```
 
-0 occurs Either transform or use ordered beta regression
+Check range of proportion (Beta not defined for 1 and 0)
 
-Models
+```{r}
+dat_genus_delta <- dat_genus_delta %>% 
+  mutate(proportion = ifelse(proportion == 0, 0.001, proportion))
+```
+
+0 occurs Either transform or use ordered beta regression. Tried ordered beta regression, bad fit, high number of divergent transitions
+
+### Models
 
 ```{r}
 m_ccover_genus_19 <- brm(bf(proportion ~  genus*marine_area + (0 + factor(year)|marine_area),
@@ -285,7 +254,8 @@ m_ccover_genus_19 <- brm(bf(proportion ~  genus*marine_area + (0 + factor(year)|
                          init = 0,
                          iter = 4000,
                          warmup = 2000,
-                         control = list(adapt_delta = 0.98),
+                         control = list(adapt_delta = 0.99, 
+                               max_treedepth = 20),
                          chains = 4,
                          cores = 4,
                          threads = threading(2, static = T),
@@ -301,7 +271,8 @@ m_ccover_genus_20 <- brm(bf(proportion ~  genus*marine_area + (0 + factor(year)|
                          init = 0,
                          iter = 4000,
                          warmup = 2000,
-                         control = list(adapt_delta = 0.98),
+                         control = list(adapt_delta = 0.99, 
+                               max_treedepth = 20),
                          chains = 4,
                          cores = 4,
                          threads = threading(2, static = T),
@@ -317,7 +288,8 @@ m_ccover_genus_21 <- brm(bf(proportion ~  genus*marine_area + (0 + factor(year)|
                          init = 0,
                          iter = 4000,
                          warmup = 2000,
-                         control = list(adapt_delta = 0.98),
+                         control = list(adapt_delta = 0.99, 
+                               max_treedepth = 20),
                          chains = 4,
                          cores = 4,
                          threads = threading(2, static = T),
@@ -333,7 +305,8 @@ m_ccover_genus_22 <- brm(bf(proportion ~  genus*marine_area + (0 + factor(year)|
                          init = 0,
                          iter = 4000,
                          warmup = 2000,
-                         control = list(adapt_delta = 0.98),
+                         control = list(adapt_delta = 0.99, 
+                                        max_treedepth = 20),
                          chains = 4,
                          cores = 4,
                          threads = threading(2, static = T),
@@ -345,10 +318,10 @@ m_ccover_genus_22 <- brm(bf(proportion ~  genus*marine_area + (0 + factor(year)|
 ### Check Models
 
 ```{r}
-summary(m_ccover_genus_19)#4 d trans, rhat, ESS good
-summary(m_ccover_genus_20)#10 d trans, rhat, ESS good
-summary(m_ccover_genus_21)#37 d trans, rhat good , ESS ok
-summary(m_ccover_genus_22)#38 d trans, rhat good, ESS ok
+summary(m_ccover_genus_19)#20 d trans, rhat, ESS good
+summary(m_ccover_genus_20)#5 d trans, rhat, ESS good
+summary(m_ccover_genus_21)#42 d trans, rhat good , ESS ok
+summary(m_ccover_genus_22)#2 d trans, rhat good, ESS ok
 ```
 
 ```{r}
@@ -366,6 +339,8 @@ pp_check(m_ccover_genus_22, ndraws = 100)
 ```
 
 ### Predict
+
+Predict data for plots
 
 ```{r}
 pred_gen_19 <- predict_before_after(.data = dat_genus_delta %>% 
@@ -474,12 +449,14 @@ m_ccover_genus_19_dhw <- brm(bf(proportion ~ 0 + max_dhw_29 * genus * factor(yea
 ### Checks
 
 ```{r}
-summary(m_ccover_genus_19_dhw)
+summary(m_ccover_genus_19_dhw)#no div trans
 pp_check(m_ccover_genus_19_dhw, ndraws = 100)
-bayes_R2(m_ccover_genus_19_dhw)
+bayes_R2(m_ccover_genus_19_dhw)#0.8
 ```
 
 ### Line plot
+
+Predict delta for each genus along sequence of max_DHW values
 
 ```{r}
 new_data_dhw_gen <- expand_grid(max_dhw_29 = seq(min(dat_genus_delta$max_dhw_29)-0.1, 
@@ -545,6 +522,8 @@ ggsave(filename = "cover_regression_dhw_genus.pdf",
 ```
 
 ### Slope
+
+Assuming linear relationship over whole course of max_DHW calculate slope between lowest max_DHW value and highest. Calculate this slope for each genus
 
 ```{r}
 slope_gen <- epred_draws(m_ccover_genus_19_dhw, 
