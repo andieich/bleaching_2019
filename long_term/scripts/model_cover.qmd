@@ -20,18 +20,12 @@ library(ggridges)
 
 #make colours less intense
 make_pastel <- function(cols, n = 0.4){
-  
   names <- names(cols)
-  
   cols <- col2rgb(cols)
-  
 # transform to HSV space
   cols <- rgb2hsv(cols)
-  
   cols <- hsv(cols[1,], cols[2,]*n, cols[3,])
-  
   names(cols) <- names
-  
   return(cols)
 }
 
