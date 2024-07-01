@@ -2,6 +2,7 @@
 title: "DHW MUR data"
 format: html
 editor: visual
+bibliography: references.bib
 ---
 
 ```{r}
@@ -20,13 +21,13 @@ library(patchwork)
 library(zoo)
 ```
 
-s
+Get functions that help to download DHW and SST values
 
 ```{r}
 source(here("dhw/scripts/Andi_DHW_functions.R"))
 ```
 
-Get MMM from Dixon et al.
+Download down-scaled MMM from [@dixon2022]
 
 ```{r}
 # # url to get MMM
@@ -138,7 +139,15 @@ dat_moorea_mur_sst_dhw <- left_join(dat_moorea_mur_sst,
                                      by = c("lat", "lon"))
 ```
 
-Calculate DHW
+Calculate different DHWs
+
+-   dhw_mmm: DHW calculated with [@dixon2022] MMM as bleaching threshold
+
+-   dhw_mmm1: DHW calculated with [@dixon2022] MMM + 1 as bleaching threshold (similar to CRW method)
+
+-   dhw_29: DHW calculated with 29°C as bleaching threshold (from [@pratchett2013])
+
+-   dhw_29_8: DHW calculated with 29.8°C as bleaching threshold (CRW data)
 
 ```{r}
 dat_moorea_mur_sst_dhw <- dat_moorea_mur_sst_dhw %>% 

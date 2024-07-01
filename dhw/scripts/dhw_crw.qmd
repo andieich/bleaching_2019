@@ -20,13 +20,13 @@ library(patchwork)
 library(zoo)
 ```
 
-s
+Get functions that help to download DHW and SST values
 
 ```{r}
 source(here("dhw/scripts/Andi_DHW_functions.R"))
 ```
 
-Get MMM from Dixon et al.
+Download climatology from NOAA
 
 ```{r}
  # url_climatology = "https://www.star.nesdis.noaa.gov/pub/sod/mecb/crw/data/5km/v3.1_op/climatology/nc/ct5km_climatology_v3.1.nc"
@@ -83,7 +83,7 @@ map_moorea <- ggplot() +
 map_moorea
 ```
 
-Get DHW Data
+Download and read DHW Data
 
 ```{r}
 # download_all(lat1 = moorea_box$lat_min,
@@ -104,11 +104,6 @@ dat_moorea_crw_dhw <- read_nc(here("dhw/data/sst/crw"),
 ```
 
 Get max DHW
-
-```{r}
-dat_moorea_crw_dhw %>% 
-  filter(lat == -17.525, lon == -149.825)
-```
 
 ```{r}
 dat_moorea_crw_dhwS <- dat_moorea_crw_dhw %>% 
@@ -141,15 +136,6 @@ ggsave(filename = "map_moorea_max_dhw.png",
        plot = map_moorea_max_dhw, 
        path = here("dhw/plots"),
        width = 30/3, height = 25/3, units = "cm")
-```
-
-```{r}
-
-dat_moorea_crw_dhw %>% 
-  ggplot(aes(x = date, y = dhw))+
-  geom_line()+
-  facet_grid(-lat~-lon)
-
 ```
 
 Add max dhw to site coordinates
