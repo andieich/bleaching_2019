@@ -177,7 +177,7 @@ m_state_18_20 <- brm(state ~  s(dia, by = site, k = 4),
           backend = "cmdstanr")
 
 
-summary(m_state_18_20)#127 
+summary(m_state_18_20)#1 div trans
 #plot(m_state_18_20)
 pp_check(m_state_18_20, ndraws = 100)
 ```
