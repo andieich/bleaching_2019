@@ -19,6 +19,8 @@ library(patchwork) #plots
 library(ncdf4) # read files
 library(patchwork)
 library(zoo)
+library(ggrepel)
+library(giscoR) # for the countries dataset only
 ```
 
 Get functions that help to download DHW and SST values
@@ -188,7 +190,7 @@ Plot
 plot_dhw <- function(col){
   col = sym(col)
   
-  map_moorea_max_dhw <- ggplot() +
+  plot <- ggplot() +
   geom_raster(data = dat_moorea_mur_sst_dhwS %>% 
                 filter(!is.na(!!col)), aes(x = lon, y = lat, fill = !!col)) +
   geom_sf(data = map_FrenchPolynesia,
@@ -201,7 +203,7 @@ plot_dhw <- function(col){
   scale_fill_viridis(name = "max. DHW")+
   theme_minimal()+
     theme(legend.position = "bottom")
-  return(map_moorea_max_dhw)
+  return(plot)
 }
 
 plot_compare_dhw <- (plot_dhw("max_dhw_mmm")+
@@ -246,4 +248,153 @@ dat_sites <- dat_sites %>%
 
 ```{r}
 write.csv(dat_sites, file = here("dhw/data/dat_sites_maxdhw_mur.csv"),row.names = F)
+```
+
+Nicer map to show sites and `max_dhw_29`
+
+Get map of coral reef distribution
+
+```{r}
+map_corals <- st_read(dsn = here("dhw/data/maps/Coralreef_distribution_polynesia/Coralreef_distribution_polynesia.shp"), quiet = T) %>% 
+  st_as_sf()
+
+```
+
+Get site coordinates
+
+```{r}
+sites <- read.csv(here("dhw/data/dat_mm_site_coordinates.csv"))
+```
+
+Make map
+
+```{r}
+
+#define colours
+col_coast = c("West" = "#0A9F9DFF", 
+              "North" = "#CEB175FF", 
+              "East" = "#E54E21FF")
+
+
+#get site df and define positioning of label
+sites <- sites %>% 
+  mutate(hjust = ifelse(coast == "West", 1, 0),
+         nudge_x = ifelse(coast == "West", -0.008, 0.005),
+         nudge_x = ifelse(site %in% c("Tiahura", "Entre 2 baies"),-0.005 ,nudge_x),
+         nudge_y = case_when(site == "Tema'e" ~ -0.002 ,
+                             site == "Nuarei" ~ 0.004 ,
+                             site == "Gendron" ~ 0.004 ,
+                             site == "Tetaiuo" ~ -0.004 ,
+                             site == "Piha'ena" ~ -0.004 ,
+                             site == "Tiahura" ~ 0.004,
+                             site == "Entre 2 baies" ~ 0.004,
+                             TRUE ~ 0),
+         hjust = ifelse(site %in% c("Tiahura", "Entre 2 baies"),1 ,hjust)) 
+
+
+
+#define outlines
+lat_min <- -17.62
+lat_max <- -17.46
+lon_min <- -149.94
+lon_max <- -149.74
+
+
+plot_dhw_map <- ggplot() + 
+  geom_raster(data = dat_moorea_mur_sst_dhwS %>% 
+                filter(lat >= lat_min,
+                       lat <= lat_max,
+                       lon >= lon_min,
+                       lon <= lon_max), 
+              aes(x = lon, y = lat, fill = max_dhw_29)) +
+  geom_sf(data = map_corals, fill = "white", col = NA, alpha = .4)+ # outlines reefs
+  geom_sf(data = map_FrenchPolynesia,
+          fill = "antiquewhite", #fill colour of land
+          col = "black")+ # outlines
+  #outline without hassle of having 2 fill legends
+    geom_point(data = sites, 
+             aes(x = lon, y = lat), 
+             size = 2.4, 
+             col = "white",
+            show.legend = F)+
+  #actual coloured points
+  geom_point(data = sites, 
+             aes(x = lon, y = lat, col = coast), 
+             size = 2, 
+            show.legend = F)+
+  geom_text_repel(data = sites, 
+            aes(x = lon, 
+                y = lat, 
+                label = site,
+                hjust = hjust,
+                col = coast),
+             nudge_x = sites$nudge_x,
+             nudge_y = sites$nudge_y,
+            size = 3.3, 
+            fontface = "italic",
+            show.legend = F,
+            min.segment.length = 2,
+            force_pull = 2, 
+            seed = 12,
+            point.size = NA,
+            bg.color = "white")+
+  geom_text(aes(x = -149.85, y = -17.538, label = "Mo'orea"), 
+            size = 4, 
+            hjust = 0 #put label right of point
+            )+
+  annotation_scale(location = "br") + # scale at bottom right
+  scale_fill_viridis(name = "max. DHW")+
+  scale_y_continuous(breaks = seq(-17.7, -17.4, by = 0.1)) + 
+  scale_x_continuous(breaks = seq(-150, -149.7, by = 0.1)) +
+  coord_sf(xlim = c(lon_min, lon_max),
+           ylim = c(lat_min, lat_max),expand = F)+
+  scale_colour_manual(values = col_coast, name = NULL)+
+  theme_minimal()+
+  labs(x = NULL, y = NULL)+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        strip.background = element_blank(),
+        axis.ticks = element_line(colour = "black" ))+
+  theme(legend.position = "top")
+
+plot_dhw_map
+
+
+
+
+
+ggsave("plot_dhw_map.png", 
+       plot = plot_dhw_map, 
+       path = here("dhw/plots"), 
+       width = 15, height = 14, units = "cm",
+       dpi = 500)
+
+```
+
+Overview World map
+
+```{r}
+crs_string <- "+proj=ortho +lon_0=-150 +lat_0=-17"
+
+ocean <- st_point(x = c(0,0)) %>%
+  st_buffer(dist = 6371000) %>%
+  st_sfc(crs = crs_string)
+
+world <- gisco_countries %>%
+  st_intersection(ocean %>% st_transform(4326)) %>% # select visible area only
+  st_transform(crs = crs_string) # reproject to ortho
+
+
+
+
+world_map <- ggplot() + 
+  geom_sf(data = ocean, fill = "aliceblue", color = NA)+
+  geom_sf(data = world, fill = "grey", col = "grey")+
+  geom_point(aes(x= -149.7598, y = -17.50671), shape = 1, col = "darkred", size = 10)+
+  theme_void()
+
+world_map
+
+ggsave("world_map.pdf", plot = world_map, path = here("dhw/plots"), width = 10, height = 10, units = "cm")
 ```
