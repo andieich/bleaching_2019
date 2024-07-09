@@ -396,6 +396,8 @@ pred_gen <- bind_rows(pred_gen_19,
 
 ### Plot results
 
+Per site
+
 ```{r}
 plot_change_site_gen <- pred_gen %>%
     ggplot(aes(x = ate*100, y = marine_area, col = genus))+
@@ -420,6 +422,34 @@ ggsave(filename = "plot_change_site_gen.pdf",
        plot = plot_change_site_gen, 
        path = here("long_term/plots/"),
        width = 25, height = 20, units  = "cm")
+```
+
+Per coastal orientation
+
+```{r}
+plot_change_coast_gen <- pred_gen %>%
+    ggplot(aes(x = ate*100, y = coast, col = genus))+
+    stat_pointinterval(position = position_dodge())+
+    geom_vline(xintercept = 0, linetype = "11")+
+    facet_wrap(~coast, ncol = 1, scales = "free_y")+
+    labs( x = expression(Delta~"Cover (%"~yr^-1*")"), y = NULL)+
+    scale_colour_manual(values = cols_genera, name = NULL)+
+    theme_minimal()+
+  facet_grid(coast~comparison, scales = "free")+
+    theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(colour = "black",  fill='transparent'),
+        plot.title = element_text(hjust = 0.5, face="bold"),
+        strip.text = element_text(face="bold"),
+        legend.position = "bottom")
+
+plot_change_coast_gen
+
+
+ggsave(filename = "plot_change_coast_gen.pdf",
+       plot = plot_change_coast_gen, 
+       path = here("long_term/plots/"),
+       width = 20, height = 12, units  = "cm")
 ```
 
 ## DHW in 2019
