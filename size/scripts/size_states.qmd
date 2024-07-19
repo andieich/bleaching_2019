@@ -245,3 +245,116 @@ ggsave(filename = "plot_states.pdf",
        path = here("size/plots"),
        width = 30, height = 30, units = "cm")
 ```
+
+## Recruitment
+
+Get data
+
+```{r}
+
+dat_born <- bind_rows(dat_state_E2B, dat_state_HAA) %>% 
+  filter(spec_1 == "Pocillopora",
+         state == "born") %>% 
+  mutate(dia = sqrt(area_1/pi)*2) %>% 
+  mutate(site = recode(site, 
+                       "HAA" = "Haapiti",
+                       "E2B" = "Pihaena")) %>% 
+  separate(genet_ID, into = c("site2", "quadrat", "rep")) %>% 
+  group_by(comparison, site, quadrat) %>% 
+  summarise(n_born = n()) %>% 
+  separate(comparison, into = c("before", "year")) %>% 
+  select(-before) %>% 
+  mutate(year_num = as.numeric(factor(year)))
+```
+
+Model
+
+```{r}
+m_born <- brm(n_born ~  year_num * site, 
+              data = dat_born,
+              family = poisson(),
+          iter = 4000,
+          warmup = 2000,
+          file = here("size/models/m_born"),
+          chains = 4,
+          cores = 4,
+          threads = threading(2, static = T),
+          seed = 123,
+          #control = list(adapt_delta = 0.99, 
+          #                     max_treedepth = 20),
+          backend = "cmdstanr")
+```
+
+Check Model
+
+```{r}
+summary(m_born)# good
+pp_check(m_born, ndraws = 100)
+bayes_R2(m_born)#0.11
+```
+
+Predict
+
+```{r}
+#predict data with model along sequence of diameter
+dat_pred_born <- m_born %>% 
+  epred_draws(newdata = expand_grid(
+    year_num = seq(1, 3, length = 100),
+    site = unique(dat_born$site)))
+
+
+#summarise predictions
+dat_pred_bornS <- dat_pred_born %>% 
+  group_by(year_num,site) %>% 
+  summarise(median = median(.epred, na.rm = T),
+            l95 = quantile(.epred, 0.025, na.rm = T),
+            u95 = quantile(.epred, 0.975, na.rm = T),
+            
+            l90 = quantile(.epred, 0.05, na.rm = T),
+            u90 = quantile(.epred, 0.95, na.rm = T),
+            
+            l80 = quantile(.epred, 0.1, na.rm = T),
+            u80 = quantile(.epred, 0.9, na.rm = T),
+            
+            ) %>% 
+  ungroup() %>% 
+  mutate(year = year_num*2 + 2016)
+
+```
+
+Plot
+
+```{r}
+dat_bornS <-  dat_born %>%  
+  group_by(year, site) %>% 
+  summarise(mean_n_born = mean(n_born),
+            se = sd(n_born, na.rm=T) / sqrt(sum(!is.na(n_born)))) 
+
+col_site = c("Haapiti" = "#0A9F9DFF", 
+              "Pihaena" = "#CEB175FF")
+
+  
+plot_born <- dat_born %>% 
+  ggplot(aes(x = as.numeric(year)))+
+  geom_ribbon(data = dat_pred_bornS, aes(ymin = l95, ymax = u95, fill = site), alpha = .2)+
+  geom_ribbon(data = dat_pred_bornS, aes(ymin = l90, ymax = u90, fill = site), alpha = .2)+
+  geom_ribbon(data = dat_pred_bornS, aes(ymin = l80, ymax = u80, fill = site), alpha = .2)+
+  geom_line(data = dat_pred_bornS, aes(y = median, col = site), linewidth = 1.2)+
+  geom_point(aes(y = n_born, col = site), position = position_jitter(.2))+
+  #geom_errorbar(data = dat_bornS, aes(ymin = mean_n_born - se, ymax = mean_n_born + se, col = site), position = position_dodge(), width = .5, col = "black")+
+  #geom_point(data = dat_bornS, aes(y = mean_n_born,  fill = site), size = 2.5, shape = 21, col = "black")+
+  labs(y = "# born", x = NULL)+
+  scale_colour_manual(values = col_site, name = NULL)+
+  scale_fill_manual(values = col_site, name = NULL)+
+  scale_x_continuous(breaks = seq(2018, 2022, by = 2))+
+  facet_wrap(~site)+
+  theme_andi()+
+  theme(legend.position = "none")
+
+plot_born
+
+ggsave(filename = "plot_born.pdf",
+       plot = plot_born, 
+       path = here("size/plots"),
+       width = 18, height = 10, units = "cm")
+```
