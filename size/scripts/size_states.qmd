@@ -43,7 +43,7 @@ plot_model <- function(data, model, title = ""){
   
   # To plot raw data as ticks, dummy code states (one column per state, 0/1 for true false), => pivor longer to have one column for state and one for true/false, => select only true (=1)
   dat_dummy <-  data %>% 
-  select(spec_1, dia, state) %>% 
+  select(spec_1, log_area, state) %>% 
   mutate(state = recode(state,
                             "died" = "complete mortality",
                             "grew" = "growth",
@@ -55,16 +55,16 @@ plot_model <- function(data, model, title = ""){
   mutate(state = gsub("state_","",state)) %>% 
   filter(dummy != 0)
   
-#predict data with model along sequence of diameter
+#predict data with model along sequence of area
 dat_pred <- model %>% 
   epred_draws(newdata = expand_grid(
-    dia = seq(0, 30, length = 200),
+    log_area = seq(0, 7.2, length = 200),
     site = unique(data$site)))
 
 
 #summarise predictions
 dat_predS <- dat_pred %>% 
-  group_by(dia,site, .category) %>% 
+  group_by(log_area, site, .category) %>% 
   summarise(median = median(.epred, na.rm = T),
             l95 = quantile(.epred, 0.025, na.rm = T),
             u95 = quantile(.epred, 0.975, na.rm = T),
@@ -84,10 +84,10 @@ plot <- dat_predS %>%
                             "died" = "complete mortality",
                             "grew" = "growth",
                             "shrunk" = "partial mortality")) %>% 
-  ggplot(aes(x = dia))+
-  geom_ribbon(aes(x = dia, ymin = l95, ymax = u95, fill = .category), alpha = .2)+
-  geom_ribbon(aes(x = dia, ymin = l90, ymax = u90, fill = .category), alpha = .2)+
-  geom_ribbon(aes(x = dia, ymin = l80, ymax = u80, fill = .category), alpha = .2)+
+  ggplot(aes(x = log_area))+
+  geom_ribbon(aes(x = log_area, ymin = l95, ymax = u95, fill = .category), alpha = .2)+
+  geom_ribbon(aes(x = log_area, ymin = l90, ymax = u90, fill = .category), alpha = .2)+
+  geom_ribbon(aes(x = log_area, ymin = l80, ymax = u80, fill = .category), alpha = .2)+
   geom_line(aes(y = median, col = .category))+
   geom_point(data = dat_dummy, 
              aes(y = dummy + 0.05, 
@@ -101,7 +101,7 @@ plot <- dat_predS %>%
   facet_wrap2(~site, axes = "all") +
   scale_y_continuous(name="Probability", breaks =seq(0, 1, 0.2))+
   xlim(0,30)+
-  labs(y = "Probability", x = "Colony diameter (cm)",
+  labs(y = "Probability", x = expression("Log 1 + Colony area"~cm^2),
        title = title)+
   theme_minimal()+
   theme_andi()+
@@ -118,14 +118,17 @@ return(plot)
 
 ### Read & setup data
 
+Use log(1 + area) not log to keep values positive
+
 ```{r}
 dat_state_E2B <- read.csv(here("size/data/dat_state_E2B.csv"))
 dat_state_HAA <- read.csv(here("size/data/dat_state_HAA.csv"))
 
+
 dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>% 
   filter(spec_1 == "Pocillopora",
          state != "born") %>% 
-  mutate(dia = sqrt(area_1/pi)*2) %>% 
+  mutate(log_area = log(1+area_1)) %>% 
   mutate(site = recode(site, 
                        "HAA" = "Haapiti",
                        "E2B" = "Pihaena"))
@@ -136,7 +139,7 @@ dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>%
 ### 2016 - 2018
 
 ```{r}
-m_state_16_18 <- brm(state ~  s(dia, by = site, k = 4), 
+m_state_16_18 <- brm(state ~  s(log_area, by = site, k = 4), 
                      data = dat_state %>% 
                        filter(comparison == "2016_2018"),
           family = categorical(link = "logit", refcat = NULL),
@@ -161,7 +164,7 @@ pp_check(m_state_16_18, ndraws = 100)
 ### 2018 - 2020
 
 ```{r}
-m_state_18_20 <- brm(state ~  s(dia, by = site, k = 4), 
+m_state_18_20 <- brm(state ~  s(log_area, by = site, k = 4), 
                      data = dat_state %>% 
                        filter(comparison == "2018_2020"),
           family = categorical(link = "logit", refcat = NULL),
@@ -185,7 +188,7 @@ pp_check(m_state_18_20, ndraws = 100)
 ### 2020- 2022
 
 ```{r}
-m_state_20_22 <- brm(state ~  s(dia, by = site, k = 4), 
+m_state_20_22 <- brm(state ~  s(log_area, by = site, k = 4), 
                      data = dat_state %>% 
                        filter(comparison == "2020_2022"),
           family = categorical(link = "logit", refcat = NULL),
@@ -255,7 +258,6 @@ Get data
 dat_born <- bind_rows(dat_state_E2B, dat_state_HAA) %>% 
   filter(spec_1 == "Pocillopora",
          state == "born") %>% 
-  mutate(dia = sqrt(area_1/pi)*2) %>% 
   mutate(site = recode(site, 
                        "HAA" = "Haapiti",
                        "E2B" = "Pihaena")) %>% 
@@ -296,7 +298,7 @@ bayes_R2(m_born)#0.11
 Predict
 
 ```{r}
-#predict data with model along sequence of diameter
+
 dat_pred_born <- m_born %>% 
   epred_draws(newdata = expand_grid(
     year_num = seq(1, 3, length = 100),
