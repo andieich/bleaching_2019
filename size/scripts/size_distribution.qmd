@@ -69,8 +69,8 @@ cols_years <- c("2016" = "#E69F00",
                 "2020" = "#009E73",
                 "2022" = "#D55E00")
 
-x_seq <- log(c(0, 10, 60, 240, 1080)+1)
-x_seq_trans <- round(exp(x_seq)-1,0)
+x_seq <- log(c(0, 10, 60, 240, 1080))
+x_seq_trans <- round(exp(x_seq),0)
 
 plot_size_distr <- dat_size %>% 
   mutate(site = recode(site, 
@@ -85,7 +85,7 @@ plot_size_distr <- dat_size %>%
   scale_fill_manual(values = cols_years, name = NULL)+
   scale_x_continuous(breaks = x_seq, 
                      labels = x_seq_trans)+
-  labs(x = "Colony diameter (cm)", y = NULL)+
+  labs(x = expression("Colony area"~cm^2), y = NULL)+
   theme_andi()+
   #theme_minimal()+
   theme(legend.position = "bottom")
