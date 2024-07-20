@@ -139,7 +139,7 @@ dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>%
 ### 2016 - 2018
 
 ```{r}
-m_state_16_18 <- brm(state ~  s(log_area, by = site, k = 4), 
+m_state_16_18 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat), 
                      data = dat_state %>% 
                        filter(comparison == "2016_2018"),
           family = categorical(link = "logit", refcat = NULL),
@@ -164,7 +164,7 @@ pp_check(m_state_16_18, ndraws = 100)
 ### 2018 - 2020
 
 ```{r}
-m_state_18_20 <- brm(state ~  s(log_area, by = site, k = 4), 
+m_state_18_20 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat), 
                      data = dat_state %>% 
                        filter(comparison == "2018_2020"),
           family = categorical(link = "logit", refcat = NULL),
@@ -188,7 +188,7 @@ pp_check(m_state_18_20, ndraws = 100)
 ### 2020- 2022
 
 ```{r}
-m_state_20_22 <- brm(state ~  s(log_area, by = site, k = 4), 
+m_state_20_22 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat), 
                      data = dat_state %>% 
                        filter(comparison == "2020_2022"),
           family = categorical(link = "logit", refcat = NULL),
