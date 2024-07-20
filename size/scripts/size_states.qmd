@@ -16,6 +16,7 @@ library(cmdstanr)
 library(ggh4x)
 library(fastDummies)
 library(ggstance)
+library(scales)
 ```
 
 ## Functions
@@ -53,13 +54,15 @@ plot_model <- function(data, model, title = ""){
                names_to = "state", 
                values_to = "dummy") %>% 
   mutate(state = gsub("state_","",state)) %>% 
-  filter(dummy != 0)
+  filter(dummy != 0) %>% 
+    mutate(area = exp(log_area)-1)
   
 #predict data with model along sequence of area
 dat_pred <- model %>% 
   epred_draws(newdata = expand_grid(
-    log_area = seq(0, 7.2, length = 200),
-    site = unique(data$site)))
+    log_area = seq(0, 7.3, length = 200),
+    site = unique(data$site)), 
+    re_formula = NA)
 
 
 #summarise predictions
@@ -76,7 +79,11 @@ dat_predS <- dat_pred %>%
             u80 = quantile(.epred, 0.9, na.rm = T),
             
             ) %>% 
-  ungroup()
+  ungroup() %>% 
+    mutate(area = exp(log_area)-1)
+
+x_seq <- log(c(0, 10, 60, 240, 1080)+1)
+x_seq_trans <- round(exp(x_seq)-1,0)
 
 #and plot
 plot <- dat_predS %>%
@@ -100,8 +107,9 @@ plot <- dat_predS %>%
   scale_fill_manual(values = cols_state, name = NULL)+
   facet_wrap2(~site, axes = "all") +
   scale_y_continuous(name="Probability", breaks =seq(0, 1, 0.2))+
-  xlim(0,30)+
-  labs(y = "Probability", x = expression("Log 1 + Colony area"~cm^2),
+  scale_x_continuous(breaks = x_seq, 
+                     labels = x_seq_trans)+
+  labs(y = "Probability", x = expression("Colony area"~cm^2),
        title = title)+
   theme_minimal()+
   theme_andi()+
@@ -131,7 +139,9 @@ dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>%
   mutate(log_area = log(1+area_1)) %>% 
   mutate(site = recode(site, 
                        "HAA" = "Haapiti",
-                       "E2B" = "Pihaena"))
+                       "E2B" = "Pihaena")) %>% 
+  separate(genet_ID, into = c("site2", "quadrat", "rep")) %>% 
+  select(-site2)
 ```
 
 ## Models
@@ -153,7 +163,6 @@ m_state_16_18 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat),
           control = list(adapt_delta = 0.99, 
                                max_treedepth = 20),
           backend = "cmdstanr")
-
 
 summary(m_state_16_18)
 #plot(m_state_16_18)
@@ -205,8 +214,9 @@ m_state_20_22 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat),
 
 
 summary(m_state_20_22)
+
 #plot(m_state_20_22)
-pp_check(m_state_20_22, ndraws = 100)#not too good. Continue as test
+pp_check(m_state_20_22, ndraws = 100)
 ```
 
 ## Plots
