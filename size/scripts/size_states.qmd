@@ -82,7 +82,7 @@ dat_predS <- dat_pred %>%
   ungroup() %>% 
     mutate(area = exp(log_area)-1)
 
-x_seq <- log(c(0, 10, 60, 240, 1080)+1)
+x_seq <- log(c(0, 2,  10, 50, 250, 1000)+1)
 x_seq_trans <- round(exp(x_seq)-1,0)
 
 #and plot
@@ -111,7 +111,6 @@ plot <- dat_predS %>%
                      labels = x_seq_trans)+
   labs(y = "Probability", x = expression("Colony area"~cm^2),
        title = title)+
-  theme_minimal()+
   theme_andi()+
   theme(legend.position = "bottom",
         plot.title = element_text(face = "bold", hjust = 0.5))#
@@ -353,9 +352,7 @@ plot_born <- dat_born %>%
   geom_ribbon(data = dat_pred_bornS, aes(ymin = l80, ymax = u80, fill = site), alpha = .2)+
   geom_line(data = dat_pred_bornS, aes(y = median, col = site), linewidth = 1.2)+
   geom_point(aes(y = n_born, col = site), position = position_jitter(.2))+
-  #geom_errorbar(data = dat_bornS, aes(ymin = mean_n_born - se, ymax = mean_n_born + se, col = site), position = position_dodge(), width = .5, col = "black")+
-  #geom_point(data = dat_bornS, aes(y = mean_n_born,  fill = site), size = 2.5, shape = 21, col = "black")+
-  labs(y = "# born", x = NULL)+
+  labs(y = expression("‘Born‘ colonies ("*m^-2*")"), x = NULL)+
   scale_colour_manual(values = col_site, name = NULL)+
   scale_fill_manual(values = col_site, name = NULL)+
   scale_x_continuous(breaks = seq(2018, 2022, by = 2))+
