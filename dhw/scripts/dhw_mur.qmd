@@ -343,7 +343,7 @@ plot_dhw_map <- ggplot() +
             hjust = 0 #put label right of point
             )+
   annotation_scale(location = "br") + # scale at bottom right
-  scale_fill_viridis(name = "max. AHS")+
+  scale_fill_viridis(name = expression(AHS[max]))+
   scale_y_continuous(breaks = seq(-17.7, -17.4, by = 0.1)) + 
   scale_x_continuous(breaks = seq(-150, -149.7, by = 0.1)) +
   coord_sf(xlim = c(lon_min, lon_max),
