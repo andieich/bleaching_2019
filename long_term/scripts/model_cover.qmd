@@ -550,7 +550,7 @@ plot_dhw <- pred_dhwS %>%
   geom_point(data = dat_sel_dhwS, aes(x = max_dhw_29, y = delta, fill = coast), 
              size = 2.5, shape = 21, col = "grey90")+
   scale_fill_manual(values = col_coast, name = NULL)+
-  labs(y = expression(Delta~"Cover (%"~yr^-1*")"), x = "max. AHS", tag = "A")+
+  labs(y = expression(Delta~"Cover (%"~yr^-1*")"), x = expression(AHS[max]), tag = "A")+
   guides(fill=guide_legend(title="Coast"))+
   theme_andi()+
   theme(legend.position = "bottom",
@@ -600,7 +600,7 @@ plot_slope<- slope %>%
              x = slope_val))+
   geom_density_ridges_gradient(fill = "#A4BED5FF")+
   geom_vline(xintercept = 0, linetype = "11")+
-  labs(x = expression(Delta~"% cover"~AHS^-1), y = "Density", tag = "B")+
+  labs(x = expression(Delta~"% cover"~AHS[max]^-1), y = "Density", tag = "B")+
   scale_fill_manual(values = cols, name = NULL)+
   theme_andi()+
   theme(legend.position = "none")+
