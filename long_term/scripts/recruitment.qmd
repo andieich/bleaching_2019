@@ -1,0 +1,91 @@
+---
+title: "Recruitment"
+format: html
+editor: visual
+---
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+
+theme_andi <- function(){
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        strip.background = element_blank(),
+        axis.line = element_line(colour = "black" ))
+}
+```
+
+```{r}
+dat_recruit <- read.csv(here("long_term/data/clean/2024_07_22_recruits.csv")) %>% 
+  mutate(date = as_date(date, format = "%d.%m.%y"),
+         year = year(date),
+         depth = substr(depth, 1,2) %>%  
+           as.numeric() %>% 
+           as.factor()) %>% 
+  filter(#year >= 2018,
+         site != "Tiahura") %>% 
+  mutate(site = recode(site, "Vaipahu" = "Pihaena")) %>% 
+  mutate(depth = paste(depth, "m"))
+
+```
+
+Sum over all sites and genera
+
+```{r}
+dat_recruit_sum <- dat_recruit %>% 
+  group_by(year, site, plate, depth) %>% 
+  summarise(number = sum(number, na.rm = T))
+```
+
+Summarize
+
+```{r}
+dat_recruit_sumS <- dat_recruit_sum %>% 
+  group_by(year, site, depth) %>% 
+  summarise(mean_number = mean(number, na.rm = T),
+            se = sd(number, na.rm=T) / sqrt(sum(!is.na(number))))
+```
+
+```{r}
+
+col_site = c("Haapiti" = "#0A9F9DFF", 
+              "Pihaena" = "#CEB175FF")
+
+
+plot_recruit <- dat_recruit_sum %>% 
+  ggplot(aes(x = as.numeric(year)))+
+geom_point(aes(y = number, col = site),
+            position = position_jitter(.2),
+           size = 1)+
+  geom_errorbar(data =dat_recruit_sumS, 
+             aes(ymin = mean_number - se, 
+                 ymax = mean_number + se,
+             width = .3))+
+  geom_line(data =dat_recruit_sumS, 
+             aes(y = mean_number, col = site))+
+  geom_point(data =dat_recruit_sumS, 
+             aes(y = mean_number, fill = site),
+             size = 2.5,
+             col = "black",
+             shape = 21)+
+  labs(y = expression("Recruits ("*plate^-1*")"), x = NULL)+
+  scale_colour_manual(values = col_site, name = NULL)+
+  scale_fill_manual(values = col_site, name = NULL)+
+  facet_grid(depth~site)+
+ # scale_x_continuous(breaks = seq(2018, 2024, by = 1))+
+  theme_andi()+
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black",  fill='transparent'))
+plot_recruit
+```
+
+```{r}
+ggsave(filename = "plot_recruit.pdf",
+       plot = plot_recruit, 
+       path = here("long_term/plots"),
+       width = 15, height = 8, units = "cm")
+```
