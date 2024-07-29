@@ -85,7 +85,7 @@ predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){
     # join the nd predictor grid to the output
     left_join(new_data, by = "row") %>%
     # drop two of the columns which are now unnecessary
-     select(-name, -row) %>%
+     dplyr::select(-name, -row) %>%
     # convert to a wider format so we can compute the contrast
     pivot_wider(names_from = year, values_from = value) %>%
     # compute the ATE contrast
@@ -95,7 +95,7 @@ predict_before_after <- function(.model, .data, .get_summary = FALSE, ...){
     summarise(ate = mean(tau)) %>%
     # remove the draw index column
     ungroup() %>%
-    select(ate, !!!group_vars)
+    dplyr::select(ate, !!!group_vars)
   
   # summarise if wanted
   if(.get_summary){
@@ -216,12 +216,12 @@ Dump remaining genera into "Others", re-calculate cover
 dat_c <- dat_c %>% 
     left_join(dat_meta, by = "marine_area") %>% 
   mutate(genus = ifelse(substrate %in% top_5_corals, substrate, "Other")) %>% 
-  select(-substrate) %>% 
+  dplyr::select(-substrate) %>% 
   group_by(across(c(-proportion))) %>% 
   summarise(proportion = sum(proportion, na.rm = T)) %>% 
   ungroup() %>% 
   pivot_wider(names_from = genus, values_from = proportion, values_fill = 0) %>% 
-  select(-benthic_group, -habitat) %>% 
+  dplyr::select(-benthic_group, -habitat) %>% 
   pivot_longer(cols = 10:ncol(.),names_to = "genus", values_to = "proportion") %>% 
   mutate(genus = fct_relevel(genus, "Other", after = Inf)) #set others to end
 ```
@@ -270,7 +270,7 @@ Filter data, only outer slope, corals, and data for 2019 ff
 ```{r}
 dat_coral_delta <- dat_benthic_gr %>% 
   filter(habitat == "Outer slope", benthic_group == "Coral") %>% 
-  select(- habitat, -benthic_group) %>% 
+  dplyr::select(- habitat, -benthic_group) %>% 
   filter(year > 2018) %>% 
   mutate(year = as.factor(year))
 ```
@@ -387,7 +387,7 @@ post_pred <- fitted(m_ccover,
   # join the nd predictor grid to the output
   left_join(new_data, by = "row") %>%
   # drop two of the columns which are now unnecessary
-  select(-name, -row) %>%
+  dplyr::select(-name, -row) %>%
   # convert to a wider format so we can compute the contrast
   pivot_wider(names_from = year, values_from = value) %>%
   janitor::clean_names() %>% 
@@ -404,7 +404,7 @@ post_pred <- fitted(m_ccover,
             delta_2023 = mean(delta_2023)) %>%
   # # remove the draw index column
   ungroup() %>%
-  select(marine_area, coast, delta_2020, delta_2021, delta_2022, delta_2023) %>% 
+  dplyr::select(marine_area, coast, delta_2020, delta_2021, delta_2022, delta_2023) %>% 
   pivot_longer(delta_2020:delta_2023, names_to = "year", values_to = "percent") %>% 
   mutate(year = substr(year, 7, 10) %>% 
            as.numeric())
@@ -428,21 +428,40 @@ post_predS <- post_pred %>%
 y
 
 ```{r}
-pl <- post_predS %>%
+
+col_coast = c("West" = "#0A9F9DFF", 
+              "North" = "#CEB175FF", 
+              "East" = "#E54E21FF")
+
+
+plot_change_cover <- post_predS %>%
+  mutate(coast = fct_rev(coast)) %>% 
   ggplot(aes(x = year, col = coast))+
   geom_hline(yintercept = c(0, 50, 100), linetype = "11", col = "grey")+
   geom_line(aes(y = median), position = position_dodge(width = .1))+
   geom_errorbar(aes(ymin = l_89, ymax = u_89),width = 0, linewidth = .5, position = position_dodge(width = .1))+
   geom_errorbar(aes(ymin = l_66, ymax = u_66),width = 0, linewidth = 1, position = position_dodge(width = .1))+
+  scale_colour_manual(values = col_coast, name = NULL)+
   geom_point(aes(y = median), position = position_dodge(width = .1))+
-    labs( x = expression(Delta~"Cover (%"~yr^-1*")"), y = "Cover (%) compared to before")+
+    labs( y = expression(Delta~"Cover"), x = NULL)+
     theme_andi()+
     theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         plot.title = element_text(hjust = 0.5, face="bold"),
         strip.text = element_text(face="bold"),
         legend.position = "bottom")
-pl
+plot_change_cover
+
+
+
+
+```
+
+```{r}
+ggsave(filename = "plot_change_cover.pdf",
+       plot = plot_change_cover, 
+       path = here("long_term/plots/"),
+       width = 17, height = 9, units  = "cm")
 ```
 
 ## DHW
@@ -491,7 +510,7 @@ new_data_dhw <- expand_grid(max_dhw_29 = seq(min(dat_coral_delta$max_dhw_29)-0.1
 #predict
 pred_dhw <-  epred_draws(m_ccover_19_dhw, newdata = new_data_dhw, re_formula = NA) %>% 
   ungroup() %>% 
-  select(max_dhw_29, .draw, .epred, year) %>% 
+  dplyr::select(max_dhw_29, .draw, .epred, year) %>% 
   pivot_wider(names_from = year, values_from = .epred) %>% 
   mutate(delta = 100*(`2020` - `2019`)/`2019`)
 
@@ -511,13 +530,16 @@ pred_dhwS <- pred_dhw %>%
 
 #calculate delta values
 dat_sel_dhwS <- dat_coral_delta %>% 
-  select(marine_area, proportion, year, coast, max_dhw_29) %>% 
+  dplyr::select(marine_area, proportion, year, coast, max_dhw_29) %>% 
   filter(year %in% c(2019:2020)) %>% 
   pivot_wider(names_from = year, values_from = proportion, values_fn = mean) %>% 
   mutate(delta =  100*(`2020`- `2019`)/`2019`)  
   
 
 #plot
+
+
+
 plot_dhw <- pred_dhwS %>%
   ggplot(aes(x = max_dhw_29))+
   geom_hline(yintercept = 0, linetype = "11", col = "grey")+
@@ -528,7 +550,7 @@ plot_dhw <- pred_dhwS %>%
   geom_point(data = dat_sel_dhwS, aes(x = max_dhw_29, y = delta, fill = coast), 
              size = 2.5, shape = 21, col = "grey90")+
   scale_fill_manual(values = col_coast, name = NULL)+
-  labs(y = expression(Delta~"Cover (%"~yr^-1*")"), x = "max. DHW")+
+  labs(y = expression(Delta~"Cover (%"~yr^-1*")"), x = "max. AHS", tag = "A")+
   guides(fill=guide_legend(title="Coast"))+
   theme_andi()+
   theme(legend.position = "bottom",
@@ -557,15 +579,15 @@ slope <- epred_draws(m_ccover_19_dhw,
                              max(dat_coral_delta$max_dhw_29)),
               year = factor(2019:2020))) %>% 
   ungroup() %>% 
-  select(max_dhw_29, year, .epred, .draw) %>% 
+  dplyr::select(max_dhw_29, year, .epred, .draw) %>% 
   pivot_wider(names_from = year, values_from = .epred) %>% 
   mutate(delta =  (`2020`- `2019`)/`2019`) %>% 
-  select(delta, max_dhw_29, .draw) %>% 
+  dplyr::select(delta, max_dhw_29, .draw) %>% 
   pivot_wider(names_from = max_dhw_29, values_from = delta) %>% 
   mutate(slope_val = (`6.26471428571429` - `5.765`) / (6.26471428571429 - 5.765) )
 
 slope %>%
-  select(slope_val) %>% 
+  dplyr::select(slope_val) %>% 
   brms_summary()
 
 above_0 <- length(which(slope$slope_val > 0))/nrow(slope) %>% 
@@ -578,7 +600,7 @@ plot_slope<- slope %>%
              x = slope_val))+
   geom_density_ridges_gradient(fill = "#A4BED5FF")+
   geom_vline(xintercept = 0, linetype = "11")+
-  labs(x = expression(Delta~"% cover"~DHW^-1), y = "Density")+
+  labs(x = expression(Delta~"% cover"~AHS^-1), y = "Density", tag = "B")+
   scale_fill_manual(values = cols, name = NULL)+
   theme_andi()+
   theme(legend.position = "none")+
@@ -593,5 +615,20 @@ plot_slope
 ggsave(filename = "plot_slope.pdf",
        plot = plot_slope, 
        path = here("long_term/plots/"),
-       width = 15, height = 10, units  = "cm")
+       width = 8, height = 10, units  = "cm")
+```
+
+Combine
+
+```{r}
+plot_slope_both <- plot_dhw+plot_slope+ 
+  plot_layout(widths = c(2, 1))
+plot_slope_both
+```
+
+```{r}
+ggsave(filename = "plot_slope_both.pdf",
+       plot = plot_slope_both, 
+       path = here("long_term/plots/"),
+       width = 18, height = 10, units  = "cm")
 ```
