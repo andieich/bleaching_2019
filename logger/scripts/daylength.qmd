@@ -1,0 +1,114 @@
+---
+title: "Daylength"
+format: html
+editor: visual
+---
+
+Libraries
+
+```{r}
+library(Logger)
+library(tidyverse)
+library(here)
+```
+
+```{r}
+loggerinfo <- read_loggerinfo(here::here("logger/data/2024_09_02_logger_info.xlsx"), sheet = "retrieved")
+```
+
+```{r}
+loggerdata <- read_loggerfiles(loggerinfo, folder = here("logger/data/"))
+```
+
+```{r}
+plot_all_deployments(loggerdata,parameter = "light_intensity")
+```
+
+Filter for daylingt
+
+Remove last day (not full cycle)
+
+```{r}
+
+loggerdata_clean <- loggerdata %>% 
+  filter(light_intensity > 0) %>% 
+  mutate(date = as_date(date_time)) %>% 
+  group_by(date, site, SN) %>% 
+  summarise(dl_start = min(date_time),
+            dl_end = max(date_time)) %>% 
+  dplyr::filter(site == "E2B" & date < as.Date("2024-08-19") | 
+         site == "Temae" & date < as.Date("2024-08-09")) %>% 
+  ungroup() %>% 
+  mutate(day_length = dl_end - dl_start) 
+
+```
+
+Same range
+
+```{r}
+loggerdata_clean %>% 
+  group_by(site) %>% 
+  summarise(range(date))
+```
+
+2024-08-02 until 2024-08-08
+
+```{r}
+loggerdata_clean <- loggerdata_clean %>% 
+  filter(date > as.Date("2024-08-02"),
+         date < as.Date("2024-08-08"))
+
+```
+
+```{r}
+loggerdata_cleanS <- loggerdata_clean %>% 
+  mutate(day_length = as.numeric(day_length)) %>% 
+  group_by(site, date) %>% 
+  summarise(mean_daily_daylength = mean(day_length))
+
+
+
+loggerdata_cleanSS <- loggerdata_cleanS %>% 
+  group_by(site) %>% 
+  summarise(mean_daylength = mean(mean_daily_daylength),
+            sd = sd(mean_daily_daylength),
+            n = n(),
+            se = sd / sqrt(n)) 
+
+loggerdata_cleanSS
+
+```
+
+```{r}
+t <- lm(mean_daily_daylength ~ site, data = loggerdata_cleanS) 
+
+
+anova(t)
+```
+
+```{r}
+plot(t)
+```
+
+```{r}
+t.test(mean_daily_daylength ~ site, data = loggerdata_cleanS)#sig
+```
+
+```{r}
+library(emmeans)
+
+emmeans(t, pairwise ~ site)#0.156h
+
+0.156*60#9.36 min
+
+```
+
+```{r}
+ggplot(aes(x = site), data = loggerdata_cleanSS)+
+  geom_jitter(data = loggerdata_cleanS, aes(y = mean_daily_daylength))+
+  geom_errorbar(aes(ymin = mean_daylength - se, ymax = mean_daylength + se), width = .2)+
+  geom_point(aes(y = mean_daylength), size = 4)+
+  labs(y = "Time in h", x = NULL)+
+    theme_minimal()
+  
+```
