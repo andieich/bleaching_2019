@@ -104,11 +104,20 @@ emmeans(t, pairwise ~ site)#0.156h
 ```
 
 ```{r}
-ggplot(aes(x = site), data = loggerdata_cleanSS)+
+plot_daylength <- ggplot(aes(x = site), data = loggerdata_cleanSS)+
   geom_jitter(data = loggerdata_cleanS, aes(y = mean_daily_daylength))+
   geom_errorbar(aes(ymin = mean_daylength - se, ymax = mean_daylength + se), width = .2)+
-  geom_point(aes(y = mean_daylength), size = 4)+
+  geom_point(aes(y = mean_daylength), size = 4, shape = 21, fill = "white")+
   labs(y = "Time in h", x = NULL)+
     theme_minimal()
+
+plot_daylength
   
+```
+
+```{r}
+ggsave(filename = "plot_daylength.pdf",
+        plot = plot_daylength, 
+        path = here("logger/plots/"),
+        width = 10, height = 8, units  = "cm")
 ```
