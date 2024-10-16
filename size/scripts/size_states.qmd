@@ -17,6 +17,7 @@ library(ggh4x)
 library(fastDummies)
 library(ggstance)
 library(scales)
+library(htmlTable)
 ```
 
 ## Functions
@@ -116,7 +117,10 @@ plot <- dat_predS %>%
         plot.title = element_text(face = "bold", hjust = 0.5))#
 
 print(plot)
-return(plot)
+
+exp <- list("plot" = plot, "data" = dat_predS, "data_raw" = dat_pred)
+
+return(exp)
 
 }
 ```
@@ -128,24 +132,19 @@ return(plot)
 Use log(1 + area) not log to keep values positive
 
 ```{r}
-dat_state_E2B <- read.csv(here("size/data/dat_state_E2B.csv"))
-dat_state_HAA <- read.csv(here("size/data/dat_state_HAA.csv"))
-
-
-dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>% 
-  filter(spec_1 == "Pocillopora",
-         state != "born") %>% 
+dat_state <- read.csv(here("size/data/dat_state.csv")) %>% 
+  filter(state != "born") %>% 
   mutate(log_area = log(1+area_1)) %>% 
   mutate(site = recode(site, 
-                       "HAA" = "Haapiti",
-                       "E2B" = "Pihaena")) %>% 
+                       "HAA" = "Ha'apiti",
+                       "E2B" = "Piha'ena")) %>% 
   separate(genet_ID, into = c("site2", "quadrat", "rep")) %>% 
   select(-site2)
 ```
 
 ## Models
 
-### 2016 - 2018
+### 2016-2018
 
 ```{r}
 m_state_16_18 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat), 
@@ -169,7 +168,7 @@ pp_check(m_state_16_18, ndraws = 100)
 
 ```
 
-### 2018 - 2020
+### 2018 -2020
 
 ```{r}
 m_state_18_20 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat), 
@@ -193,7 +192,7 @@ summary(m_state_18_20)#1 div trans
 pp_check(m_state_18_20, ndraws = 100)
 ```
 
-### 2020- 2022
+### 2020-2022
 
 ```{r}
 m_state_20_22 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat), 
@@ -226,19 +225,19 @@ Predict and plot data
 plot_states_before <- plot_model(data = dat_state %>% 
                        filter(comparison == "2016_2018"), 
            model = m_state_16_18, 
-           title = "2016 - 2018") +
+           title = "2016 - 2018")$plot +
   theme(legend.position = "none")
 
 plot_states_during <- plot_model(data = dat_state %>% 
                        filter(comparison == "2018_2020"), 
            model = m_state_18_20, 
-           title = "2018 - 2020") +
+           title = "2018 - 2020")$plot +
   theme(legend.position = "none")
 
 plot_states_after <- plot_model(data = dat_state %>% 
                        filter(comparison == "2020_2022"), 
            model = m_state_20_22, 
-           title = "2020 - 2022")
+           title = "2020 - 2022")$plot
 
 ```
 
@@ -258,112 +257,57 @@ ggsave(filename = "plot_states.pdf",
        width = 30, height = 30, units = "cm")
 ```
 
-## Recruitment
-
-Get data
+Median sizes for 50% mortality
 
 ```{r}
+pred_states_before <- plot_model(data = dat_state %>% 
+                       filter(comparison == "2016_2018"), 
+           model = m_state_16_18, 
+           title = "2016 - 2018")$data %>% 
+  mutate(comparison = "before")
 
-dat_born <- bind_rows(dat_state_E2B, dat_state_HAA) %>% 
-  filter(spec_1 == "Pocillopora",
-         state == "born") %>% 
-  mutate(site = recode(site, 
-                       "HAA" = "Haapiti",
-                       "E2B" = "Pihaena")) %>% 
-  separate(genet_ID, into = c("site2", "quadrat", "rep")) %>% 
-  group_by(comparison, site, quadrat) %>% 
-  summarise(n_born = n()) %>% 
-  separate(comparison, into = c("before", "year")) %>% 
-  select(-before) %>% 
-  mutate(year_num = as.numeric(factor(year)))
-```
+pred_states_during <- plot_model(data = dat_state %>% 
+                       filter(comparison == "2018_2020"), 
+           model = m_state_18_20, 
+           title = "2018 - 2020")$data %>% 
+  mutate(comparison = "during")
 
-Model
-
-```{r}
-m_born <- brm(n_born ~  year_num * site, 
-              data = dat_born,
-              family = poisson(),
-          iter = 4000,
-          warmup = 2000,
-          file = here("size/models/m_born"),
-          chains = 4,
-          cores = 4,
-          threads = threading(2, static = T),
-          seed = 123,
-          #control = list(adapt_delta = 0.99, 
-          #                     max_treedepth = 20),
-          backend = "cmdstanr")
-```
-
-Check Model
-
-```{r}
-summary(m_born)# good
-pp_check(m_born, ndraws = 100)
-bayes_R2(m_born)#0.11
-```
-
-Predict
-
-```{r}
-
-dat_pred_born <- m_born %>% 
-  epred_draws(newdata = expand_grid(
-    year_num = seq(1, 3, length = 100),
-    site = unique(dat_born$site)))
+pred_states_after <- plot_model(data = dat_state %>% 
+                       filter(comparison == "2020_2022"), 
+           model = m_state_20_22, 
+           title = "2020 - 2022")$data %>% 
+  mutate(comparison = "after")
 
 
-#summarise predictions
-dat_pred_bornS <- dat_pred_born %>% 
-  group_by(year_num,site) %>% 
-  summarise(median = median(.epred, na.rm = T),
-            l95 = quantile(.epred, 0.025, na.rm = T),
-            u95 = quantile(.epred, 0.975, na.rm = T),
-            
-            l90 = quantile(.epred, 0.05, na.rm = T),
-            u90 = quantile(.epred, 0.95, na.rm = T),
-            
-            l80 = quantile(.epred, 0.1, na.rm = T),
-            u80 = quantile(.epred, 0.9, na.rm = T),
-            
-            ) %>% 
-  ungroup() %>% 
-  mutate(year = year_num*2 + 2016)
-
-```
-
-Plot
-
-```{r}
-dat_bornS <-  dat_born %>%  
-  group_by(year, site) %>% 
-  summarise(mean_n_born = mean(n_born),
-            se = sd(n_born, na.rm=T) / sqrt(sum(!is.na(n_born)))) 
-
-col_site = c("Haapiti" = "#0A9F9DFF", 
-              "Pihaena" = "#CEB175FF")
-
-  
-plot_born <- dat_born %>% 
-  ggplot(aes(x = as.numeric(year)))+
-  geom_ribbon(data = dat_pred_bornS, aes(ymin = l95, ymax = u95, fill = site), alpha = .2)+
-  geom_ribbon(data = dat_pred_bornS, aes(ymin = l90, ymax = u90, fill = site), alpha = .2)+
-  geom_ribbon(data = dat_pred_bornS, aes(ymin = l80, ymax = u80, fill = site), alpha = .2)+
-  geom_line(data = dat_pred_bornS, aes(y = median, col = site), linewidth = 1.2)+
-  geom_point(aes(y = n_born, col = site), position = position_jitter(.2))+
-  labs(y = expression("‘Born‘ colonies ("*m^-2*")"), x = NULL)+
-  scale_colour_manual(values = col_site, name = NULL)+
-  scale_fill_manual(values = col_site, name = NULL)+
-  scale_x_continuous(breaks = seq(2018, 2022, by = 2))+
-  facet_wrap(~site)+
-  theme_andi()+
-  theme(legend.position = "none")
-
-plot_born
-
-ggsave(filename = "plot_born.pdf",
-       plot = plot_born, 
-       path = here("size/plots"),
-       width = 18, height = 10, units = "cm")
+pred_states <- bind_rows(pred_states_before, 
+                         pred_states_during,
+                         pred_states_after)
+pred_states %>% 
+  filter(.category  %in% c("died", "shrunk")) %>% 
+  filter(site == "Piha'ena" & .category =="died" & comparison == "after" & area > 20 |
+           site == "Piha'ena" & .category =="died" & comparison != "after"|
+           site == "Piha'ena" & .category =="shrunk"|
+           site == "Ha'apiti") %>% 
+  mutate(diff = abs(0.5 - median)) %>% 
+  group_by(.category, comparison, site) %>% 
+  slice_min(diff) %>% 
+  select(site, .category, comparison, diff, area) %>% 
+  arrange(site, .category, comparison) %>% 
+  filter(diff < 0.01) %>% 
+  select(-diff) %>% 
+  mutate(area = round(area, 0),
+         .category = recode(.category, 
+                            "died" = "complete mortality",
+                            "shrunk" = "partial mortality"),
+         comparison = factor(comparison),         ,
+         comparison = fct_relevel(comparison, c("before", "during", "after")),
+         comparison = recode(comparison, 
+                            "before" = "2016 - 2018",
+                            "during" = "2018 - 2020",
+                            "after" = "2020 - 2022")
+        ) %>% 
+  rename(fate = .category) %>% 
+  arrange(site,comparison) %>% 
+  pivot_wider(names_from = comparison, values_from = area) %>% 
+  htmlTable(rnames = FALSE)
 ```
