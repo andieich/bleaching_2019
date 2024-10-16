@@ -101,11 +101,11 @@ get_infos <- function(data, buffer = 0.1){
   #loop through data to get info
   for (i in 1:nrow(data)){
 
-    #if genet inly in second year = born
+    #if genet only in second year = born
     if (data$area_1[i] == 0 & data$area_2[i] > 0){
       
       data$state[i] <-  "born"
-      #In this case, assign genus name also to year 1 althought that colony did not yet exist in the first year. This is done do make the df more consistand and easier plotting
+      #In this case, assign genus name also to year 1 althought that colony did not yet exist in the first year. This is done do make the df more consistent and easier plotting
       data$spec_1[i] <- data$spec_2[i]
       data$area_1[i] <- data$area_2[i]
       
@@ -153,7 +153,7 @@ get_infos <- function(data, buffer = 0.1){
 # The TagLab data contains multiple entries in cells if a genet split into several colonies or if colonies merged. This is the case for the colum conatining the genus name (e.g. "Pocillopora Pocillopora Pocillopora" and for the area, e.g. "2.1 4.3 7.8".) The functions selects only on genus name and sums up the areas. This function is called from another function (combine_multiple_entries()) which loops over the rows in several columns
 
 # Input:
-  # cell: The cell of a data frame that should be combines
+  # cell: The cell of a data frame that should be combined
   # row_num: The row number, not necessary for manipulations but helps to understand what's going on if there is a problem
   #type: either "character" (for genus/species names) or "numeric" for areas. 
 
@@ -180,7 +180,7 @@ combine_multiple_entries_cell <- function(cell, row_num, type){
       #otherwise, calculate sum
     } else {
         content <- content %>% 
-          sum(na.rm = T)
+          sum()
     }
     
     # if cell is character get the unique values

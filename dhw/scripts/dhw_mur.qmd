@@ -250,6 +250,18 @@ dat_sites <- dat_sites %>%
 write.csv(dat_sites, file = here("dhw/data/dat_sites_maxdhw_mur.csv"),row.names = F)
 ```
 
+Overview mean and se
+
+```{r}
+dat_sites %>% 
+  group_by(coast) %>% 
+  summarise(mean = mean(max_dhw_29),
+            sd = sd(max_dhw_29),
+            n = n(),
+            se = round(sd / sqrt(n),2))
+
+```
+
 Nicer map to show sites and `max_dhw_29`
 
 Get map of coral reef distribution
