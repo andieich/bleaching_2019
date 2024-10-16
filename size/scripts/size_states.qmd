@@ -34,14 +34,21 @@ theme_andi <- function(){
 
 #Function to predict & plot model data
 
+#define colours
+  
+cols_state <-  c(
+  "complete mortality" = "#D55E00",
+  "growth" = "#009E73",
+  "partial mortality" = "#E69F00",
+  "no change" = "grey60"
+)
+
+x_seq <- log(c(0, 2, 10, 50, 250, 1000) + 1)
+x_seq_trans <- round(exp(x_seq) - 1, 0)
+
 plot_model <- function(data, model, title = ""){
   
-  #define colours
   
-  cols_state <-  c("complete mortality" = "#D55E00",
-           "growth" = "#009E73",
-           "partial mortality" = "#E69F00",
-           "no change" = "grey60")
   
   # To plot raw data as ticks, dummy code states (one column per state, 0/1 for true false), => pivor longer to have one column for state and one for true/false, => select only true (=1)
   dat_dummy <-  data %>% 
@@ -82,9 +89,6 @@ dat_predS <- dat_pred %>%
             ) %>% 
   ungroup() %>% 
     mutate(area = exp(log_area)-1)
-
-x_seq <- log(c(0, 2,  10, 50, 250, 1000)+1)
-x_seq_trans <- round(exp(x_seq)-1,0)
 
 #and plot
 plot <- dat_predS %>%
@@ -310,4 +314,73 @@ pred_states %>%
   arrange(site,comparison) %>% 
   pivot_wider(names_from = comparison, values_from = area) %>% 
   htmlTable(rnames = FALSE)
+```
+
+## Subtracted Mortality
+
+To get a rough estimate of additional mortality due to bleaching, subtract mortality in "normal" years (2016 - 2018) from that in years including the event (2018 - 2020).
+
+```{r}
+predraw_states_before <- plot_model(data = dat_state %>% 
+                       filter(comparison == "2016_2018"), 
+           model = m_state_16_18, 
+           title = "2016 - 2018")$data_raw %>% 
+  mutate(comparison = "before")
+
+predraw_states_during <- plot_model(data = dat_state %>% 
+                       filter(comparison == "2018_2020"), 
+           model = m_state_18_20, 
+           title = "2018 - 2020")$data_raw %>% 
+  mutate(comparison = "during")
+
+predraw_states <- bind_rows(predraw_states_before, 
+                         predraw_states_during) %>% 
+  filter(.category == "died") %>% 
+  pivot_wider(names_from = comparison, values_from = .epred) %>% 
+  mutate(diff = during - before) %>% 
+  group_by(log_area, site, .category) %>% 
+  summarise(median = median(diff, na.rm = T),
+            l95 = quantile(diff, 0.025, na.rm = T),
+            u95 = quantile(diff, 0.975, na.rm = T),
+            
+            l90 = quantile(diff, 0.05, na.rm = T),
+            u90 = quantile(diff, 0.95, na.rm = T),
+            
+            l80 = quantile(diff, 0.1, na.rm = T),
+            u80 = quantile(diff, 0.9, na.rm = T),
+            
+            ) %>% 
+  ungroup() %>% 
+    mutate(area = exp(log_area)-1)
+
+
+  
+plot_sub <- predraw_states %>%
+  mutate(.category = recode(.category,
+                            "died" = "complete mortality")) %>% 
+  ggplot(aes(x = log_area))+
+  geom_ribbon(aes(x = log_area, ymin = l95, ymax = u95, fill = .category), alpha = .2)+
+  geom_ribbon(aes(x = log_area, ymin = l90, ymax = u90, fill = .category), alpha = .2)+
+  geom_ribbon(aes(x = log_area, ymin = l80, ymax = u80, fill = .category), alpha = .2)+
+  geom_line(aes(y = median, col = .category))+
+  scale_colour_manual(values = cols_state, name = NULL)+
+  scale_fill_manual(values = cols_state, name = NULL)+
+  facet_wrap2(~site, axes = "all") +
+  scale_y_continuous(name="Probability", breaks =seq(0, 1, 0.2))+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_x_continuous(breaks = x_seq, 
+                     labels = x_seq_trans)+
+  labs(y = "Probability", x = expression("Colony area"~cm^2))+
+  theme_andi()+
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))#
+
+plot_sub
+```
+
+```{r}
+ggsave(filename = "plot_SI_exp_mortality_bleachign.pdf",
+       plot = plot_sub, 
+       path = here("size/plots"),
+       width = 30, height = 10, units = "cm")
 ```
