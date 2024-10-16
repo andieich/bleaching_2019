@@ -407,7 +407,9 @@ post_predS <- post_pred %>%
             l_66 = quantile(percent, probs = (1-0.66)/2),
             u_66 = quantile(percent, probs = 1 - (1-0.66)/2),
             l_89 = quantile(percent, probs = (1-0.89)/2),
-            u_89 = quantile(percent, probs = 1-(1-0.89)/2)
+            u_89 = quantile(percent, probs = 1-(1-0.89)/2),
+            l95 = quantile(percent, 0.025, na.rm = T),
+            u95 = quantile(percent, 0.975, na.rm = T),
       )
 ```
 
