@@ -187,7 +187,7 @@ m_state_18_20 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat),
           backend = "cmdstanr")
 
 
-summary(m_state_18_20)#1 div trans
+summary(m_state_18_20)
 #plot(m_state_18_20)
 pp_check(m_state_18_20, ndraws = 100)
 ```
