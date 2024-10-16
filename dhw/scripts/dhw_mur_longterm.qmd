@@ -1,0 +1,323 @@
+---
+title: "DHW MUR data downlaod"
+format: html
+editor: visual
+bibliography: references.bib
+---
+
+```{r}
+library(httr) #for downloads
+library(here) #for project folder structure
+library(tidyverse)
+library(pbapply) #for progress bars
+library(raster) #to load .nc files
+library(lubridate) #fast date change function
+library(ncdf4) # read files
+library(zoo)
+```
+
+Get functions that help to download DHW and SST values
+
+```{r}
+source(here("dhw/scripts/Andi_DHW_functions.R"))
+```
+
+Define Moorea ROI
+
+```{r}
+moorea_lat = -17.536273
+moorea_lon = -149.832730
+
+moorea_box = bounding_box(moorea_lat, moorea_lon, 15, 15)
+```
+
+Get SST Data
+
+```{r}
+
+#download more to calculate DHW
+
+download_all(lat1 = moorea_box$lat_min,
+             lat2 = moorea_box$lat_max,
+             lon1 = moorea_box$lon_min,
+             lon2 = moorea_box$lon_max,
+             day1 = as.Date("2016-01-01")-12*7,
+             day2 = "2022-12-31",
+             parameter = "MUR_SST",
+             folder = here("dhw/data/sst_lt"))
+
+```
+
+```{r}
+dat_moorea_mur_sst_lt <- read_nc(here("dhw/data/sst_lt"),
+                      varname = "analysed_sst",
+                      values_to = "mur_sst")
+```
+
+Calculate different DHWs
+
+-   dhw_29: DHW calculated with 29°C as bleaching threshold (from [@pratchett2013])
+
+```{r}
+dat_moorea_mur_sst_lt <- dat_moorea_mur_sst_lt %>%
+  group_by(lat, lon) %>%
+  mutate(hot_spot_29 = mur_sst - 29) %>%
+  mutate(hot_spot_29 = ifelse(hot_spot_29 >= 0, hot_spot_29, 0)) %>%
+  group_by(lat, lon) %>%
+  arrange(date) %>%
+  mutate(dhw_29  = c(
+    rep(NA, 12 * 7 - 1),
+    rollapply(
+      data = hot_spot_29 / 7,
+      width = 84,
+      FUN = sum
+    )
+  )) %>%
+  ungroup() %>% 
+  filter(!is.na(dhw_29))
+```
+
+Get mean AHS per date and SST
+
+```{r}
+dat_moorea_mur_sst_lt_meanssst <- dat_moorea_mur_sst_lt %>% 
+  group_by(date) %>% 
+  summarise(max_sst = max(mur_sst, na.rm = T)) %>% 
+  ungroup()
+
+
+dat_moorea_mur_sst_lt_ahs <- dat_moorea_mur_sst_lt %>% 
+  mutate(year = year(date)) %>% 
+  group_by(year) %>% 
+  summarise(max_ahs = max(dhw_29, na.rm = T)) %>% 
+  ungroup()
+```
+
+Plot
+
+```{r}
+mmm_moorea <- 29
+
+plot_sst_moorea <-dat_moorea_mur_sst_lt_meanssst %>% 
+  ggplot(aes(x = date, y = max_sst))+
+  geom_hline(yintercept = mmm_moorea, linetype = "dashed", col = "#D86D62")+
+  geom_line()+
+  scale_x_date(date_breaks = "4 years", date_labels =  "%Y") +
+  labs(x = NULL, y = "SST (°C)")+
+  theme_classic(); plot_sst_moorea
+```
+
+```{r}
+plot_dhw_moorea <- dat_moorea_mur_sst_lt_ahs %>% 
+  ggplot(aes(x = year, y = max_ahs))+
+  geom_bar(stat = "identity", fill = "#D86D62")+
+  geom_text(aes(x = year,
+               y = max_ahs,
+               label = round(max_ahs, 1)),
+            vjust = -.3)+
+  labs(x = "Bleaching events", y = "DHW (°C weeks)")+
+ theme_classic(); plot_dhw_moorea
+```
+
+```{r}
+
+plot_moorea <- plot_sst_moorea + plot_dhw_moorea +
+  plot_layout(widths = c(2, 1))
+plot_moorea
+
+
+
+ggsave(filename = "plot_compare_dhw.png",
+       plot = plot_compare_dhw, 
+       path = here("dhw/plots"),
+       width = 30, height = 25, units = "cm")
+
+```
+
+Add max dhw to site coordinates
+
+```{r}
+dat_sites <- read.csv(here("dhw/data/dat_mm_site_coordinates.csv"))
+```
+
+```{r}
+dat_sites <- dat_sites %>% 
+  rowwise() %>% 
+  mutate(max_dhw_mmm = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS,
+                                       lat = lat, lon = lon, "max_dhw_mmm"),
+         
+         max_dhw_mmm1 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_mmm1"),
+         
+         max_dhw_29 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_29"),
+         
+         max_dhw_29_8 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, lon = lon, "max_dhw_29_8")) %>% 
+  ungroup()
+```
+
+```{r}
+write.csv(dat_sites, file = here("dhw/data/dat_sites_maxdhw_mur.csv"),row.names = F)
+```
+
+Overview mean and se
+
+```{r}
+dat_sites %>% 
+  group_by(coast) %>% 
+  summarise(mean = mean(max_dhw_29),
+            sd = sd(max_dhw_29),
+            n = n(),
+            se = round(sd / sqrt(n),2))
+
+```
+
+Nicer map to show sites and `max_dhw_29`
+
+Get map of coral reef distribution
+
+```{r}
+map_corals <- st_read(dsn = here("dhw/data/maps/Coralreef_distribution_polynesia/Coralreef_distribution_polynesia.shp"), quiet = T) %>% 
+  st_as_sf()
+
+```
+
+Get site coordinates
+
+```{r}
+sites <- read.csv(here("dhw/data/dat_mm_site_coordinates.csv"))
+```
+
+Make map
+
+```{r}
+
+#define colours
+col_coast = c("West" = "#0A9F9DFF", 
+              "North" = "#CEB175FF", 
+              "East" = "#E54E21FF")
+
+
+#get site df and define positioning of label
+sites <- sites %>% 
+  mutate(hjust = ifelse(coast == "West", 1, 0),
+         nudge_x = ifelse(coast == "West", -0.008, 0.005),
+         nudge_x = ifelse(site %in% c("Tiahura", "Entre 2 baies"),-0.005 ,nudge_x),
+         nudge_y = case_when(site == "Tema'e" ~ -0.002 ,
+                             site == "Nuarei" ~ 0.004 ,
+                             site == "Gendron" ~ 0.004 ,
+                             site == "Tetaiuo" ~ -0.004 ,
+                             site == "Piha'ena" ~ -0.004 ,
+                             site == "Tiahura" ~ 0.004,
+                             site == "Entre 2 baies" ~ 0.004,
+                             TRUE ~ 0),
+         hjust = ifelse(site %in% c("Tiahura", "Entre 2 baies"),1 ,hjust)) 
+
+
+
+#define outlines
+lat_min <- -17.62
+lat_max <- -17.46
+lon_min <- -149.94
+lon_max <- -149.74
+
+
+plot_dhw_map <- ggplot() + 
+  geom_raster(data = dat_moorea_mur_sst_dhwS %>% 
+                filter(lat >= lat_min,
+                       lat <= lat_max,
+                       lon >= lon_min,
+                       lon <= lon_max), 
+              aes(x = lon, y = lat, fill = max_dhw_29)) +
+  geom_sf(data = map_corals, fill = "white", col = NA, alpha = .4)+ # outlines reefs
+  geom_sf(data = map_FrenchPolynesia,
+          fill = "antiquewhite", #fill colour of land
+          col = "black")+ # outlines
+  #outline without hassle of having 2 fill legends
+    geom_point(data = sites, 
+             aes(x = lon, y = lat), 
+             size = 2.4, 
+             col = "white",
+            show.legend = F)+
+  #actual coloured points
+  geom_point(data = sites, 
+             aes(x = lon, y = lat, col = coast), 
+             size = 2, 
+            show.legend = F)+
+  geom_text_repel(data = sites, 
+            aes(x = lon, 
+                y = lat, 
+                label = site,
+                hjust = hjust,
+                col = coast),
+             nudge_x = sites$nudge_x,
+             nudge_y = sites$nudge_y,
+            size = 3.3, 
+            fontface = "italic",
+            show.legend = F,
+            min.segment.length = 2,
+            force_pull = 2, 
+            seed = 12,
+            point.size = NA,
+            bg.color = "white")+
+  geom_text(aes(x = -149.85, y = -17.538, label = "Mo'orea"), 
+            size = 4, 
+            hjust = 0 #put label right of point
+            )+
+  annotation_scale(location = "br") + # scale at bottom right
+  scale_fill_viridis(name = expression(AHS[max]))+
+  scale_y_continuous(breaks = seq(-17.7, -17.4, by = 0.1)) + 
+  scale_x_continuous(breaks = seq(-150, -149.7, by = 0.1)) +
+  coord_sf(xlim = c(lon_min, lon_max),
+           ylim = c(lat_min, lat_max),expand = F)+
+  scale_colour_manual(values = col_coast, name = NULL)+
+  theme_minimal()+
+  labs(x = NULL, y = NULL)+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        strip.background = element_blank(),
+        axis.ticks = element_line(colour = "black" ))+
+  theme(legend.position = "top")
+
+plot_dhw_map
+
+
+
+
+
+ggsave("plot_dhw_map.png", 
+       plot = plot_dhw_map, 
+       path = here("dhw/plots"), 
+       width = 15, height = 14, units = "cm",
+       dpi = 500)
+
+```
+
+Overview World map
+
+```{r}
+crs_string <- "+proj=ortho +lon_0=-150 +lat_0=-17"
+
+ocean <- st_point(x = c(0,0)) %>%
+  st_buffer(dist = 6371000) %>%
+  st_sfc(crs = crs_string)
+
+world <- gisco_countries %>%
+  st_intersection(ocean %>% st_transform(4326)) %>% # select visible area only
+  st_transform(crs = crs_string) # reproject to ortho
+
+
+
+
+world_map <- ggplot() + 
+  geom_sf(data = ocean, fill = "aliceblue", color = NA)+
+  geom_sf(data = world, fill = "grey", col = "grey")+
+  geom_point(aes(x= -149.7598, y = -17.50671), shape = 1, col = "darkred", size = 10)+
+  theme_void()
+
+world_map
+
+ggsave("world_map.pdf", plot = world_map, path = here("dhw/plots"), width = 10, height = 10, units = "cm")
+```
