@@ -20,17 +20,6 @@ library(cmdstanr)
 ## Functions
 
 ```{r}
-# Summary function that returns mean, n, and se
-mean_se <- function(data, col){
-  col <- enquo(col)
-  
-  data %>% 
-    summarize(
-      mean = mean(!!col, na.rm=T),
-      n=sum(!is.na(!!col)),
-      se=sd(!!col, na.rm=T)/sqrt(sum(!is.na(!!col))))
-}
-
 
 #function to read and set up data exported with TagLab. 
 read_data <- function(files){
@@ -251,7 +240,8 @@ combine_multiple_entries <- function(data){
   
   # make sure areas are set to numeric
   data <- data %>% 
-     mutate_at(vars(starts_with("area")), as.numeric) 
+    mutate_at(vars(starts_with("area")), as.numeric) %>% 
+    mutate_at(vars(starts_with("area")),  ~replace(., is.na(.), 0)) 
   
   return(data)
 
@@ -259,29 +249,6 @@ combine_multiple_entries <- function(data){
 
 
 # calculates the probability of mortality for bins diameter of raw data
-
-get_binned_data <- function(data){
-  data %>% 
-    #divide diameter into bins
-    mutate(binned_dia = cut(dia, breaks=seq(0, 38, by = 2))) %>% 
-    #group by bin and species/genus and cmparison (year 1 vs year 2) for summaries
-    group_by(spec_1, comparison, site, binned_dia) %>% 
-    #get number of colonies per bin
-    mutate(n_per_bin = n()) %>%
-    #get number per size class and status
-    group_by(spec_1, comparison,site, binned_dia, n_per_bin, state) %>% 
-    summarise(n = n()) %>%
-    ungroup() %>% 
-    #calculate relative mortality ( = probability of portality) for each bin
-    pivot_wider(names_from = state, values_from = n) %>% 
-    mutate(p_mort = died / n_per_bin) %>% 
-    filter_at(vars(died, survived),any_vars(!is.na(.))) %>% 
-    mutate(p_mort = ifelse(is.na(p_mort), 0, p_mort)) %>% 
-    select(-died, -survived) %>% 
-    #helper column containing the center of the coral diametr bin, used for plots
-    mutate(mid = sapply(str_extract_all(.data$binned_dia, "-?[0-9.]+"), function(x) mean(as.numeric(x)))) 
-  
-}
 
 ```
 
@@ -424,54 +391,55 @@ data_20_22_E2B %>%
 
 Now, three data sets are generated for each pair of years
 
-1.  only mortality
-2.  binned raw data
-3.  more detailed categories
-
-#### Mortality data set
-
--   filter out all newly born corals
-
--   consider all corals in which area in year 2 is less than 90% of the area in year 1 as "dead", otherwise, survived
-
--   calculate theoretical diameter of colony assuming that the area is circular shape
-
-```{r}
-dat_mort_E2B <- bind_rows(data_16_18_E2B,
-                        data_18_20_E2B,
-                        data_20_22_E2B) %>% 
-  filter(state != "born") %>% 
-  mutate(state = ifelse(!is.na(rel_change) & rel_change <= -0.9, 
-                        "died", 
-                        state)) %>% 
-  mutate(state = ifelse(state != "died", 
-                        "survived",
-                        state)) %>% 
-  mutate(dia = sqrt(area_1/pi)*2) %>% 
-  separate(genet_ID,c("site", "quadrat", "ID"), sep = "_")
-
-```
-
-#### Binned mortality
-
-```{r}
-dat_mort_bin_E2B <- get_binned_data(dat_mort_E2B)
-```
+1.  States
+2.  Size per year
 
 #### States
 
 ```{r}
 dat_state_E2B <- bind_rows(data_16_18_E2B,
                            data_18_20_E2B,
-                           data_20_22_E2B)
+                           data_20_22_E2B) %>% 
+  mutate(site = "E2B")
 ```
 
-Save data
+#### Size per year
 
 ```{r}
-write.csv(dat_mort_E2B, file = here("size/data/dat_mort_E2B.csv"), row.names = F)
-write.csv(dat_mort_bin_E2B, file = here("size/data/dat_mort_bin_E2B.csv"), row.names = F)
-write.csv(dat_state_E2B, file = here("size/data/dat_state_E2B.csv"), row.names = F)
+data_E2B <- data_E2B %>% 
+  select(spec_1, spec_2, spec_3, spec_4, area_1, area_2, area_3, area_4) %>% 
+  pivot_longer(area_1:area_4, names_to = "year", values_to = "area") %>% 
+  mutate(year = recode(year, 
+                       "area_1" = "2016",
+                       "area_2" = "2018",
+                       "area_3" = "2020",
+                       "area_4" = "2022"),
+         site = "E2B",
+         spec = ifelse(is.na(spec_1), spec_2, spec_1),
+         spec = ifelse(is.na(spec), spec_3, spec),
+         spec = ifelse(is.na(spec), spec_4, spec)) %>% 
+  select(-spec_1, -spec_2, -spec_3, -spec_4) %>% 
+  filter(area > 0)
+```
+
+```{r}
+ddd <- function(spec_1, spec_2, spec_3, spec_4){
+  spec <- spec_1
+  
+  if(is.na(spec)){
+    spec <- spec_2
+  }
+  
+  if(is.na(spec)){
+    spec <- spec_3
+  }
+  
+  if(is.na(spec)){
+    spec <- spec_4
+  }
+  
+  return(spec)
+}
 ```
 
 ### Haapiti
@@ -609,52 +577,48 @@ data_20_22_HAA %>%
 
 Now, three data sets are generated for each pair of years
 
-1.  only mortality
-2.  binned raw data
-3.  more detailed categories
-
-#### Mortality data set
-
--   filter out all newly born corals
-
--   consider all corals in which area in year 2 is less than 90% of the area in year 1 as "dead", otherwise, survived
-
--   calculate theoretical diameter of colony assuming that the area is circular shape
-
-```{r}
-dat_mort_HAA <- bind_rows(data_16_18_HAA,
-                        data_18_20_HAA,
-                        data_20_22_HAA) %>% 
-  filter(state != "born") %>% 
-  mutate(state = ifelse(!is.na(rel_change) & rel_change <= -0.9, 
-                        "died", 
-                        state)) %>% 
-  mutate(state = ifelse(state != "died", 
-                        "survived",
-                        state)) %>% 
-  mutate(dia = sqrt(area_1/pi)*2) %>% 
-  separate(genet_ID,c("site", "quadrat", "ID"), sep = "_")
-
-```
-
-#### Binned mortality
-
-```{r}
-dat_mort_bin_HAA <- get_binned_data(dat_mort_HAA)
-```
+1.  States
+2.  Size per year
 
 #### States
 
 ```{r}
 dat_state_HAA <- bind_rows(data_16_18_HAA,
                            data_18_20_HAA,
-                           data_20_22_HAA)
+                           data_20_22_HAA) %>% 
+  mutate(site = "HAA")
 ```
 
-Save data
+#### Size per year
 
 ```{r}
-write.csv(dat_mort_HAA, file = here("size/data/dat_mort_HAA.csv"), row.names = F)
-write.csv(dat_mort_bin_HAA, file = here("size/data/dat_mort_bin_HAA.csv"), row.names = F)
-write.csv(dat_state_HAA, file = here("size/data/dat_state_HAA.csv"), row.names = F)
+data_HAA <- data_HAA %>% 
+  select(spec_1, spec_2, spec_3, spec_4, area_1, area_2, area_3, area_4) %>% 
+  pivot_longer(area_1:area_4, names_to = "year", values_to = "area") %>% 
+  mutate(year = recode(year, 
+                       "area_1" = "2016",
+                       "area_2" = "2018",
+                       "area_3" = "2020",
+                       "area_4" = "2022"),
+         site = "HAA",
+         spec = ifelse(is.na(spec_1), spec_2, spec_1),
+         spec = ifelse(is.na(spec), spec_3, spec),
+         spec = ifelse(is.na(spec), spec_4, spec)) %>% 
+  select(-spec_1, -spec_2, -spec_3, -spec_4) %>% 
+  filter(area > 0)
+```
+
+### Combine & Save
+
+```{r}
+dat_state <- bind_rows(dat_state_E2B,
+                       dat_state_HAA) %>% 
+  filter(spec_1 == "Pocillopora")
+
+dat_size <- bind_rows(data_E2B,
+                       data_HAA) %>% 
+  filter(spec == "Pocillopora")
+
+write.csv(dat_state, file = here("size/data/dat_state.csv"), row.names = F)
+write.csv(dat_size, file = here("size/data/dat_size.csv"), row.names = F)
 ```
