@@ -28,40 +28,30 @@ theme_andi <- function(){
 ## Get data
 
 ```{r}
-#get data for both sites
-dat_mort_E2B <- read.csv(here("size/data/dat_mort_E2B.csv"))
-dat_mort_HAA <- read.csv(here("size/data/dat_mort_HAA.csv"))
-
-#and combine
-dat_mort <- bind_rows(dat_mort_HAA, dat_mort_E2B)
+#get data
+dat_size <- read.csv(here("size/data/dat_size.csv"))
 ```
 
-### Clean data
-
 ```{r}
-# subset columns
-dat_size <- dat_mort %>% 
-  select(site, quadrat, ID, spec_1, comparison, area_1, area_2)
-
-#make new data frame for 2022 data (otherwise, "hidden" in comparison 2020 - 2022)
-dat_size_2022 <- dat_size %>% 
-  filter(comparison == "2020_2022") %>% 
-  mutate(log_area = log(1+area_2),
-         year = 2022) %>% 
-  select(site, quadrat, ID, spec_1, log_area, year)
-
-dat_size <- dat_size %>% 
-  mutate(log_area = log(1+area_1)) %>% 
-  mutate(year = as.numeric(substr(comparison,1,4))) %>% 
-  select(site, quadrat, ID, spec_1, year, log_area)
-
-
-dat_size <- bind_rows(dat_size, dat_size_2022) %>% 
-  rename(spec = spec_1)
-
+dat_size %>% 
+  filter(spec == "Pocillopora") %>% 
+  summarise(n = n())
 ```
 
 ### Plot
+
+Number of colonies
+
+```{r}
+dat_n <- dat_size %>% 
+  mutate(site = recode(site, 
+                       "HAA" = "Ha'apiti",
+                       "E2B" = "Piha'ena")) %>% 
+  group_by(site, year) %>% 
+  summarise(n = n()) %>% 
+  mutate(n = paste("n =",n))
+
+```
 
 ```{r}
 cols_years <- c("2016" = "#E69F00",
@@ -69,34 +59,49 @@ cols_years <- c("2016" = "#E69F00",
                 "2020" = "#009E73",
                 "2022" = "#D55E00")
 
-x_seq <- log(c(0, 2,  10, 50, 250, 1000)+1)
-x_seq_trans <- round(exp(x_seq)-1,0)
 
 plot_size_distr <- dat_size %>% 
   mutate(site = recode(site, 
-                       "HAA" = "Haapiti",
-                       "E2B" = "Pihaena")) %>% 
+                       "HAA" = "Ha'apiti",
+                       "E2B" = "Piha'ena")) %>% 
   filter(spec == "Pocillopora") %>% 
-  ggplot(aes(x = log_area))+
-  geom_density(aes(col = factor(year)), linewidth = 0.7)+
-  geom_density(aes(fill = factor(year)), alpha = .3, col = NA)+
-  facet_wrap2(~site, axes = "all") +
+  mutate(binned_dia = cut(area, breaks=c(seq(0, 500, by = 25), 1500), dig.lab=10)) %>% 
+      #helper column containing the center of the coral diametr bin, used for plots
+  mutate(mid = sapply(str_extract_all(.data$binned_dia, "-?[0-9.]+"), function(x) mean(as.numeric(x))),
+         mid = ifelse(binned_dia=="(500,1500]", 500,mid)) %>% 
+  group_by(site, mid, year) %>% 
+  summarise(n = n()) %>% 
+  ggplot()+
+  geom_bar(aes(fill = factor(year), y = n, x = mid), stat = "identity", linewidth = 0, width = 24)+
+  geom_text(data = dat_n, aes(y = 240, label = n, x = 250), size = 3)+
   scale_colour_manual(values = cols_years, name = NULL)+
   scale_fill_manual(values = cols_years, name = NULL)+
-  scale_x_continuous(breaks = x_seq, 
-                     labels = x_seq_trans)+
-  labs(x = expression("Colony area"~cm^2), y = NULL)+
+  labs(x = expression("Colony area"~cm^2), y = "n")+
+  facet_grid(site~year)+
+  scale_x_continuous(breaks = seq(0, 500, by = 100), labels = c(seq(0, 400, by = 100), ">500"))+
   theme_andi()+
   #theme_minimal()+
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none",
+        panel.background = element_rect(colour = "black",  fill='transparent'))
+
+
 plot_size_distr
-```
-
-Save plot
-
-```{r}
 ggsave(filename = "size_distribution.pdf",
        plot = plot_size_distr, 
        path = here("size/plots"),
        width = 16, height = 9, units = "cm")
+
+```
+
+Median Sizes
+
+```{r}
+dat_size %>% 
+  mutate(site = recode(site, 
+                       "HAA" = "Ha'apiti",
+                       "E2B" = "Piha'ena")) %>% 
+  group_by(site, year) %>% 
+  summarise(median = median(area))
 ```
