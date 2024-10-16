@@ -195,12 +195,29 @@ Mean cover in 2019
 
 ```{r}
 dat_c %>% 
-  group_by(substrate, year) %>% 
-  summarise(mean_cover = round(mean(proportion)*100,1)) %>%
-  pivot_wider(names_from = year, values_from = mean_cover) %>% 
+  group_by(year, marine_area, substrate) %>% 
+  summarise(proportion = mean(proportion)) %>%  #mean coral cover per site 
+  group_by(year, substrate) %>% 
+  summarise(proportion = mean(proportion) %>% 
+              round(2)) %>% 
+  pivot_wider(names_from = year, values_from = proportion) %>% 
   janitor::clean_names() %>% 
   arrange(-x2019)
   
+```
+
+variability
+
+```{r}
+dat_c %>% 
+  group_by(year, marine_area, substrate) %>% 
+  mutate(proportion = ifelse(proportion > 0, 1, 0)) %>% 
+  summarise(proportion = sum(proportion)) %>%  #mean coral cover per site 
+  group_by(year, substrate) %>% 
+  summarise(proportion = sum(proportion)) %>% 
+  pivot_wider(names_from = year, values_from = proportion) %>% 
+  janitor::clean_names() %>% 
+  arrange(-x2019)
 ```
 
 store in variable
@@ -380,7 +397,9 @@ post_predS <- post_pred %>%
             l_66 = quantile(percent, probs = (1-0.66)/2),
             u_66 = quantile(percent, probs = 1 - (1-0.66)/2),
             l_89 = quantile(percent, probs = (1-0.89)/2),
-            u_89 = quantile(percent, probs = 1-(1-0.89)/2)
+            u_89 = quantile(percent, probs = 1-(1-0.89)/2),
+            l95 = quantile(percent, 0.025, na.rm = T),
+            u95 = quantile(percent, 0.975, na.rm = T),
       )
 
 col_coast = c("West" = "#0A9F9DFF", 
@@ -415,6 +434,23 @@ ggsave(filename = "plot_change_cover_gen.pdf",
        plot = plot_change_cover_gen,
        path = here("long_term/plots/"),
        width = 17, height = 14, units  = "cm")
+```
+
+```{r}
+post_predS %>% 
+  filter(genus == "Pocillopora", year > 2021, coast == "East")
+```
+
+```{r}
+post_predS %>% 
+  filter(genus == "Acropora", year >= 2021, coast == "West") 
+```
+
+```{r}
+post_predS %>% 
+  filter(genus == "Montipora", year > 2019) %>% 
+  select(year, coast, median) %>% 
+  pivot_wider(names_from = year, values_from = median)
 ```
 
 ## DHW in 2019
