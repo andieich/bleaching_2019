@@ -1,5 +1,5 @@
 ---
-title: "Clean data"
+title: "Clean transect data"
 format: html
 editor: visual
 ---
@@ -428,7 +428,7 @@ dat$date[
     dat$date ==  as.Date("2012-03-08")] <- as.Date("2012-03-09")
 ```
 
-### Plot data 
+### Plot data
 
 ```{r}
 plot_mm_overview <- dat %>% 
