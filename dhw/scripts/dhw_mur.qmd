@@ -1,5 +1,5 @@
 ---
-title: "DHW MUR data downlaod"
+title: "DHW MUR Download, calculation, and plots"
 format: html
 editor: visual
 bibliography: references.bib
@@ -29,38 +29,6 @@ Get functions that help to download DHW and SST values
 source(here("dhw/scripts/Andi_DHW_functions.R"))
 ```
 
-Download down-scaled MMM from [@dixon2022]
-
-```{r}
-# # url to get MMM
-# url_doixon_climatology = "https://dl.dropboxusercontent.com/s/w78p8bn4rb5f60i/Polynesia.zip?dl=1"
-# 
-# # Download
-# httr::GET(url_doixon_climatology,
-#             httr::write_disk(here("dhw/data/mmm_mur_polynesia.zip"),
-#                              overwrite = T),
-#             httr::add_headers('Accept-Encoding' = 'gzip, deflate'),
-#             httr::progress("down"),
-#             httr::timeout(600))
-# 
-# #Unzip
-# 
-# unzip(here("dhw/data/mmm_mur_polynesia.zip"),
-#       exdir = here("dhw/data/"))
-# 
-# # Delete zip
-# file.remove(here("dhw/data/mmm_mur_polynesia.zip"))
-# 
-# # Move
-# 
-# file.rename(from = here("dhw/data/Polynesia/HighResCoralStress_metrics_observed_Polynesia_1985_2019_v2.0.csv"),
-#             to = here("dhw/data/mmm_mur.csv"))
-# 
-# # Delete folder
-# unlink(here("dhw/data/Polynesia"), recursive = T)
-
-```
-
 Define Moorea ROI
 
 ```{r}
@@ -70,18 +38,7 @@ moorea_lon = -149.832730
 moorea_box = bounding_box(moorea_lat, moorea_lon, 15, 15)
 ```
 
-Get MMM and subset
-
-```{r}
-mur_mmm <- read.csv(here("dhw/data/mmm_mur.csv")) %>% 
-  rename("lat" = "latitude",
-         "lon" = "longitude") %>% 
-  dplyr::select(lat, lon, mmm) %>% 
-  filter(between(lat, moorea_box$lat_min, moorea_box$lat_max),
-         between(lon, moorea_box$lon_min, moorea_box$lon_max))
-```
-
-Map Moorea
+Base map Moorea
 
 ```{r}
 map_FrenchPolynesia <- st_read(dsn = here("dhw/data/maps/polynesia_map/PYF_adm0.shp")) %>%
@@ -92,7 +49,6 @@ Area to be downloaded. Add MMM as overlay
 
 ```{r}
 map_moorea <- ggplot() +
-  geom_raster(data = mur_mmm, aes(x = lon, y = lat, fill = mmm)) +
   geom_sf(data = map_FrenchPolynesia,
           fill = "antiquewhite",
           col = "black")+
@@ -105,7 +61,7 @@ map_moorea <- ggplot() +
 map_moorea
 ```
 
-Get SST Data
+Downlaod MUR SST Data
 
 ```{r}
 
@@ -128,46 +84,19 @@ dat_moorea_mur_sst <- read_nc(here("dhw/data/sst"),
                       values_to = "mur_sst")
 ```
 
-Add MMM
+Calculate DHW based on literature MMM
+
+-   DHW calculated with 29°C as bleaching threshold (from [@pratchett2013])
 
 ```{r}
-dat_moorea_mur_sst <- dat_moorea_mur_sst %>% 
-  mutate(lat = round(lat, 2),
-         lon = round(lon, 2))
-
-
-dat_moorea_mur_sst_dhw <- left_join(dat_moorea_mur_sst, 
-                                     mur_mmm, 
-                                     by = c("lat", "lon"))
-```
-
-Calculate different DHWs
-
--   dhw_mmm: DHW calculated with [@dixon2022] MMM as bleaching threshold
-
--   dhw_mmm1: DHW calculated with [@dixon2022] MMM + 1 as bleaching threshold (similar to CRW method)
-
--   dhw_29: DHW calculated with 29°C as bleaching threshold (from [@pratchett2013])
-
--   dhw_29_8: DHW calculated with 29.8°C as bleaching threshold (CRW data)
-
-```{r}
-dat_moorea_mur_sst_dhw <- dat_moorea_mur_sst_dhw %>% 
+dat_moorea_mur_sst_dhw <- dat_moorea_mur_sst %>% 
   group_by(lat, lon) %>% 
- mutate(hot_spot_mmm = mur_sst - (mmm),
-        hot_spot_mmm1 = mur_sst - (mmm + 1),
-        hot_spot_29 = mur_sst - 29,
-        hot_spot_29_8 = mur_sst - 29.8) %>% 
-  mutate(hot_spot_mmm = ifelse(hot_spot_mmm >= 0, hot_spot_mmm, 0),
-         hot_spot_mmm1 = ifelse(hot_spot_mmm1 >= 0, hot_spot_mmm1, 0),
-         hot_spot_29 = ifelse(hot_spot_29 >= 0, hot_spot_29, 0),
-         hot_spot_29_8 = ifelse(hot_spot_29_8 >= 0, hot_spot_29_8, 0)) %>% 
+  mutate(hot_spot = mur_sst - 29) %>% 
+  mutate(hot_spot = ifelse(hot_spot >= 0, hot_spot, 0)) %>% 
   group_by(lat,lon) %>% 
   arrange(date) %>%
-  mutate(dhw_mmm = c(rep(NA, 12*7-1), rollapply(data = hot_spot_mmm/7, width = 84, FUN = sum)),
-         dhw_mmm1 = c(rep(NA, 12*7-1), rollapply(data = hot_spot_mmm1/7, width = 84, FUN = sum)),
-         dhw_29  = c(rep(NA, 12*7-1), rollapply(data = hot_spot_29 /7, width = 84, FUN = sum)),
-         dhw_29_8 = c(rep(NA, 12*7-1), rollapply(data = hot_spot_29_8/7, width = 84, FUN = sum))) %>% 
+  mutate(dhw = c(rep(NA, 12*7-1),
+                 rollapply(data = hot_spot/7, width = 84, FUN = sum))) %>% 
   ungroup() 
 ```
 
@@ -176,51 +105,9 @@ Get max DHW
 ```{r}
 dat_moorea_mur_sst_dhwS <- dat_moorea_mur_sst_dhw %>% 
   group_by(lat, lon) %>% 
-  summarise(max_dhw_mmm = max(dhw_mmm, na.rm = T),
-            max_dhw_mmm1 = max(dhw_mmm1, na.rm = T),
-            max_dhw_29 = max(dhw_29, na.rm = T),
-            max_dhw_29_8 = max(dhw_29_8, na.rm = T)) %>% 
+  summarise(max_dhw = max(dhw, na.rm = T)) %>% 
   mutate_all(na_if, -Inf) %>% 
   ungroup()
-```
-
-Plot
-
-```{r}
-plot_dhw <- function(col){
-  col = sym(col)
-  
-  plot <- ggplot() +
-  geom_raster(data = dat_moorea_mur_sst_dhwS %>% 
-                filter(!is.na(!!col)), aes(x = lon, y = lat, fill = !!col)) +
-  geom_sf(data = map_FrenchPolynesia,
-          fill = "antiquewhite",
-          col = "black")+
-  coord_sf(xlim = c(moorea_box$lon_min, moorea_box$lon_max),
-           ylim = c(moorea_box$lat_min, moorea_box$lat_max))+
-  labs(x=NULL, y = NULL)+
-    ggtitle(as.character(col))+
-  scale_fill_viridis(name = "max. DHW")+
-  theme_minimal()+
-    theme(legend.position = "bottom")
-  return(plot)
-}
-
-plot_compare_dhw <- (plot_dhw("max_dhw_mmm")+
-  plot_dhw("max_dhw_mmm1"))/(
-  plot_dhw("max_dhw_29")+
-  plot_dhw("max_dhw_29_8"))
-
-plot_compare_dhw
-
-```
-
-```{r}
-ggsave(filename = "plot_compare_dhw.png",
-       plot = plot_compare_dhw, 
-       path = here("dhw/plots"),
-       width = 30, height = 25, units = "cm")
-
 ```
 
 Add max dhw to site coordinates
@@ -232,17 +119,10 @@ dat_sites <- read.csv(here("dhw/data/dat_mm_site_coordinates.csv"))
 ```{r}
 dat_sites <- dat_sites %>% 
   rowwise() %>% 
-  mutate(max_dhw_mmm = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
-                                       lat = lat, lon = lon, "max_dhw_mmm"),
-         
-         max_dhw_mmm1 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
-                                       lat = lat, lon = lon, "max_dhw_mmm1"),
-         
-         max_dhw_29 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
-                                       lat = lat, lon = lon, "max_dhw_29"),
-         
-         max_dhw_29_8 = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
-                                       lat = lat, lon = lon, "max_dhw_29_8")) %>% 
+  mutate(max_dhw = find_closest_maxdhw(data = dat_moorea_mur_sst_dhwS, 
+                                       lat = lat, 
+                                       lon = lon, 
+                                       "max_dhw")) %>% 
   ungroup()
 ```
 
@@ -255,21 +135,20 @@ Overview mean and se
 ```{r}
 dat_sites %>% 
   group_by(coast) %>% 
-  summarise(mean = mean(max_dhw_29),
-            sd = sd(max_dhw_29),
+  summarise(mean = mean(max_dhw),
+            sd = sd(max_dhw),
             n = n(),
             se = round(sd / sqrt(n),2))
 
 ```
 
-Nicer map to show sites and `max_dhw_29`
+Map with sites and `max_dhw_29` values
 
 Get map of coral reef distribution
 
 ```{r}
 map_corals <- st_read(dsn = here("dhw/data/maps/Coralreef_distribution_polynesia/Coralreef_distribution_polynesia.shp"), quiet = T) %>% 
   st_as_sf()
-
 ```
 
 Get site coordinates
@@ -281,7 +160,6 @@ sites <- read.csv(here("dhw/data/dat_mm_site_coordinates.csv"))
 Make map
 
 ```{r}
-
 #define colours
 col_coast = c("West" = "#0A9F9DFF", 
               "North" = "#CEB175FF", 
@@ -318,7 +196,7 @@ plot_dhw_map <- ggplot() +
                        lat <= lat_max,
                        lon >= lon_min,
                        lon <= lon_max), 
-              aes(x = lon, y = lat, fill = max_dhw_29)) +
+              aes(x = lon, y = lat, fill = max_dhw)) +
   geom_sf(data = map_corals, fill = "white", col = NA, alpha = .4)+ # outlines reefs
   geom_sf(data = map_FrenchPolynesia,
           fill = "antiquewhite", #fill colour of land
