@@ -329,6 +329,23 @@ dat_genus_delta <- dat_genus_delta %>%
   droplevels()
 ```
 
+Cover in 2019
+
+```{r}
+dat_genus_delta %>%
+  filter(year == 2019) %>% 
+  group_by(genus) %>%
+  mutate(perc = 100*counts/100) %>% 
+  summarise(
+    mean = mean(perc),
+    sd = sd(perc),
+    n = n(),
+    se = round(sd / sqrt(n), 2)
+  ) %>% 
+  arrange(desc(mean)) %>% 
+  mutate(across(where(is.numeric), round, 1))
+```
+
 ### Models
 
 `normal(0, 1)` according to loo compare better than `normal(0, 5)` and `normal(0, 10)`
