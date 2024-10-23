@@ -51,9 +51,5 @@ rsconnect/
 # Mac
 .DS_Store
 
-# large Models
-size/models
-long_term/models
-
 # all nc files
 *.nc
