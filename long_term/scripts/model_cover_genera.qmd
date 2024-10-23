@@ -344,14 +344,14 @@ m_ccover_genus<- brm(counts|trials(50) ~ marine_area*factor(year)*genus + (1|mar
                      chains = 4,
                      cores = 4,
                      threads = threading(2, static = T),
-                     control = list(adapt_delta = 0.9),
+                     control = list(adapt_delta = 0.99),
                      seed = 123,
                      file = here("long_term/models/m_cover_genus"),
                      backend = "cmdstanr") 
 ```
 
 ```{r}
-summary(m_ccover_genus)#4 div trans, Rhat ok
+summary(m_ccover_genus)#Rhat ok
 pp_check(m_ccover_genus, ndraws = 100)
 bayes_R2(m_ccover_genus)#0.89
 ```
@@ -398,10 +398,8 @@ post_predS <- post_pred %>%
                        percent = 100)) %>% 
   group_by(year, coast, genus) %>% 
   summarise(median = median(percent),
-            l_66 = quantile(percent, probs = (1-0.66)/2),
-            u_66 = quantile(percent, probs = 1 - (1-0.66)/2),
-            l_89 = quantile(percent, probs = (1-0.89)/2),
-            u_89 = quantile(percent, probs = 1-(1-0.89)/2),
+            l_80 = quantile(percent, probs = (1-0.80)/2),
+            u_80 = quantile(percent, probs = 1-(1-0.80)/2),
             l_95 = quantile(percent, 0.025, na.rm = T),
             u_95 = quantile(percent, 0.975, na.rm = T),
       )
@@ -417,8 +415,8 @@ plot_change_cover_gen <- post_predS %>%
     ggplot(aes(x = year, col = coast))+
     geom_hline(yintercept = c(0,100), col = "grey", linetype = "11")+
   geom_line(aes(y = median), position = position_dodge(width = .1))+
-  geom_errorbar(aes(ymin = l_89, ymax = u_89),width = 0, linewidth = .5, position = position_dodge(width = .1))+
-  geom_errorbar(aes(ymin = l_66, ymax = u_66),width = 0, linewidth = .8, position = position_dodge(width = .1))+
+  geom_errorbar(aes(ymin = l_95, ymax = u_95),width = 0, linewidth = .5, position = position_dodge(width = .1))+
+  geom_errorbar(aes(ymin = l_80, ymax = u_80),width = 0, linewidth = .8, position = position_dodge(width = .1))+
   facet_wrap(~genus, ncol = 1, scales = "free")+
     scale_colour_manual(values = col_coast, name = NULL)+
   geom_point(aes(y = median), position = position_dodge(width = .1))+
@@ -442,12 +440,22 @@ ggsave(filename = "plot_change_cover_gen.pdf",
 
 ```{r}
 post_predS %>% 
-  filter(genus == "Pocillopora", year > 2021, coast == "East")
+  filter(genus == "Pocillopora", year > 2021, coast == "North")
+```
+
+```{r}
+post_predS %>% 
+  filter(genus == "Acropora", year >= 2021, coast == "North") 
 ```
 
 ```{r}
 post_predS %>% 
   filter(genus == "Acropora", year >= 2021, coast == "East") 
+```
+
+```{r}
+post_predS %>% 
+  filter(genus == "Acropora", year >= 2021, coast == "West") 
 ```
 
 ```{r}
