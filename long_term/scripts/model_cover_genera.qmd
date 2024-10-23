@@ -430,7 +430,7 @@ col_coast = c("West" = "#0A9F9DFF",
 plot_change_cover_gen <- post_predS %>%
     mutate(coast = fct_rev(coast)) %>% 
     ggplot(aes(x = year, col = coast))+
-    geom_hline(yintercept = c(0,100), col = "grey", linetype = "11")+
+    geom_hline(yintercept = c(100), col = "grey", linetype = "11")+
   geom_line(aes(y = median), position = position_dodge(width = .1))+
   geom_errorbar(aes(ymin = l_95, ymax = u_95),width = 0, linewidth = .5, position = position_dodge(width = .1))+
   geom_errorbar(aes(ymin = l_80, ymax = u_80),width = 0, linewidth = .8, position = position_dodge(width = .1))+
