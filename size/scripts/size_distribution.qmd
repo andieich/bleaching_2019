@@ -45,7 +45,8 @@ Number of colonies
 ```{r}
 dat_n <- dat_size %>% 
   mutate(site = recode(site, 
-                       "HAA" = "Ha'apiti")) %>% 
+                       "HAA" = "Ha'apiti",
+                       "E2B" = "Entre deux baies")) %>% 
   group_by(site, year) %>% 
   summarise(n = n()) %>% 
   mutate(n = paste("n =",n))
@@ -61,7 +62,8 @@ cols_years <- c("2016" = "#E69F00",
 
 plot_size_distr <- dat_size %>% 
   mutate(site = recode(site, 
-                       "HAA" = "Ha'apiti")) %>% 
+                       "HAA" = "Ha'apiti",
+                       "E2B" = "Entre deux baies")) %>% 
   filter(spec == "Pocillopora") %>% 
   mutate(binned_dia = cut(area, breaks=c(seq(0, 500, by = 25), 1500), dig.lab=10)) %>% 
       #helper column containing the center of the coral diametr bin, used for plots
@@ -99,7 +101,7 @@ Median Sizes
 dat_size %>% 
   mutate(site = recode(site, 
                        "HAA" = "Ha'apiti",
-                       "E2B" = "Piha'ena")) %>% 
+                       "E2B" = "Entre deux baies")) %>% 
   group_by(site, year) %>% 
   summarise(median = median(area))
 ```
