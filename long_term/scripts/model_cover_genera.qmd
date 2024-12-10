@@ -555,6 +555,7 @@ dat_genus_deltaS <- dat_genus_delta %>%
   pivot_wider(names_from = year, values_from = proportion, values_fn = mean) %>% 
   mutate(delta =  (`2020`- `2019`)/`2019`)
 
+cols_coast_genus <- c(col_coast, cols_genera)
 
 plot_dhw <- pred_dhw_genS %>%
   mutate(genus = fct_rev(genus)) %>% 
@@ -564,13 +565,12 @@ plot_dhw <- pred_dhw_genS %>%
    geom_ribbon(aes(ymin = l80*100, ymax = u80*100, fill = genus), alpha = .3)+
    geom_ribbon(aes(ymin = l60*100, ymax = u60*100, fill = genus), alpha = .3)+
   geom_line(aes(y = median*100, col = genus), linewidth = 1, show.legend = F)+
-  geom_point(data = dat_genus_deltaS, aes(x = max_dhw, y = delta*100, fill = genus), 
+  geom_point(data = dat_genus_deltaS, aes(x = max_dhw, y = delta*100, fill = coast), 
              size = 2.5, shape = 21, col = "white", show.legend = F)+
   scale_colour_manual(values = cols_genera, name = NULL)+
-  scale_fill_manual(values = cols_genera, name = NULL)+
+  scale_fill_manual(values = cols_coast_genus, name = NULL)+
   facet_wrap(~genus, scales = "free_y", ncol = 1)+
   labs(y = expression(Delta~"Cover (%"~yr^-1*")"), x = expression(AHS[max]), tag = "A")+
-  guides(fill=guide_legend(title="Coast"))+
   theme_andi()+
   theme(legend.position = "none",
         plot.title = element_text(face = "bold", hjust = 0.5),
