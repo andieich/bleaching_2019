@@ -216,19 +216,20 @@ plot_dhw_map <- ggplot() +
             aes(x = lon, 
                 y = lat, 
                 label = site,
-                hjust = hjust,
-                col = coast),
+                hjust = hjust),
+            col = "white",
              nudge_x = sites$nudge_x,
              nudge_y = sites$nudge_y,
             size = 3.3, 
-            fontface = "italic",
             show.legend = F,
             min.segment.length = 2,
             force_pull = 2, 
             seed = 12,
             point.size = NA,
-            bg.color = "white")+
-  geom_text(aes(x = -149.85, y = -17.538, label = "Mo'orea"), 
+           bg.color = "black"
+            )+
+  geom_text(aes(x = -149.845, y = -17.538, label = "Mo'orea"), 
+            fontface = "italic",
             size = 4, 
             hjust = 0 #put label right of point
             )+
@@ -247,6 +248,7 @@ plot_dhw_map <- ggplot() +
         strip.background = element_blank(),
         axis.ticks = element_line(colour = "black" ))+
   theme(legend.position = "top")
+
 
 plot_dhw_map
 
