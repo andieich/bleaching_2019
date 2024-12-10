@@ -181,7 +181,8 @@ sites <- sites %>%
                              TRUE ~ 0),
          hjust = ifelse(site %in% c("Tiahura", "Entre 2 baies"),1 ,hjust)) 
 
-
+sites <- sites %>% 
+  mutate(site = ifelse(site == "Entre 2 baies", "Entre deux baies", site))
 
 #define outlines
 lat_min <- -17.62
