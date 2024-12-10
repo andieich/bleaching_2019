@@ -434,7 +434,7 @@ plot_change_cover_gen <- post_predS %>%
   geom_line(aes(y = median), position = position_dodge(width = .1))+
   geom_errorbar(aes(ymin = l_95, ymax = u_95),width = 0, linewidth = .5, position = position_dodge(width = .1))+
   geom_errorbar(aes(ymin = l_80, ymax = u_80),width = 0, linewidth = .8, position = position_dodge(width = .1))+
-  facet_wrap(~genus, ncol = 1, scales = "free")+
+  facet_wrap(~fct_relevel(genus, "Pocillopora", "Montipora", "Acropora"), ncol = 1, scales = "free")+
     scale_colour_manual(values = col_coast, name = NULL)+
   geom_point(aes(y = median), position = position_dodge(width = .1))+
     labs( y = expression(Delta~"Cover (%)"), x = NULL)+
