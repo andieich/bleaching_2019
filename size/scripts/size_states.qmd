@@ -52,7 +52,7 @@ plot_model <- function(data, model, title = ""){
   
   # To plot raw data as ticks, dummy code states (one column per state, 0/1 for true false), => pivor longer to have one column for state and one for true/false, => select only true (=1)
   dat_dummy <-  data %>% 
-  select(spec_1, log_area, state) %>% 
+  dplyr::select(spec_1, log_area, state) %>% 
   mutate(state = recode(state,
                             "died" = "complete mortality",
                             "grew" = "growth",
@@ -141,9 +141,9 @@ dat_state <- read.csv(here("size/data/dat_state.csv")) %>%
   mutate(log_area = log(1+area_1)) %>% 
   mutate(site = recode(site, 
                        "HAA" = "Ha'apiti",
-                       "E2B" = "Piha'ena")) %>% 
+                       "E2B" = "Entre deux baies")) %>% 
   separate(genet_ID, into = c("site2", "quadrat", "rep")) %>% 
-  select(-site2)
+  dplyr::select(-site2)
 ```
 
 ## Models
@@ -157,13 +157,13 @@ m_state_16_18 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat),
           family = categorical(link = "logit", refcat = NULL),
           iter = 4000,
           warmup = 2000,
-          file = here("size/models/m_state_16_18"),
+           file = here("size/models/m_state_16_18"),
           chains = 4,
           cores = 4,
           seed = 123,
           threads = threading(2, static = T),
           control = list(adapt_delta = 0.99, 
-                               max_treedepth = 20),
+                         max_treedepth = 20),
           backend = "cmdstanr")
 
 summary(m_state_16_18)
@@ -187,7 +187,7 @@ m_state_18_20 <- brm(state ~  s(log_area, by = site, k = 4) + (1|quadrat),
           seed = 123,
           threads = threading(2, static = T),
           control = list(adapt_delta = 0.99, 
-                               max_treedepth = 20),
+                         max_treedepth = 20),
           backend = "cmdstanr")
 
 
@@ -288,17 +288,17 @@ pred_states <- bind_rows(pred_states_before,
                          pred_states_after)
 pred_states %>% 
   filter(.category  %in% c("died", "shrunk")) %>% 
-  filter(site == "Piha'ena" & .category =="died" & comparison == "after" & area > 20 |
-           site == "Piha'ena" & .category =="died" & comparison != "after"|
-           site == "Piha'ena" & .category =="shrunk"|
+  filter(site == "Entre deux baies" & .category =="died" & comparison == "after" & area > 20 |
+           site == "Entre deux baies" & .category =="died" & comparison != "after"|
+           site == "Entre deux baies" & .category =="shrunk"|
            site == "Ha'apiti") %>% 
   mutate(diff = abs(0.5 - median)) %>% 
   group_by(.category, comparison, site) %>% 
   slice_min(diff) %>% 
-  select(site, .category, comparison, diff, area) %>% 
+  dplyr::select(site, .category, comparison, diff, area) %>% 
   arrange(site, .category, comparison) %>% 
   filter(diff < 0.01) %>% 
-  select(-diff) %>% 
+  dplyr::select(-diff) %>% 
   mutate(area = round(area, 0),
          .category = recode(.category, 
                             "died" = "complete mortality",
@@ -379,7 +379,7 @@ plot_sub
 ```
 
 ```{r}
-ggsave(filename = "plot_SI_exp_mortality_bleachign.pdf",
+ggsave(filename = "plot_SI_exp_mortality_bleaching.pdf",
        plot = plot_sub, 
        path = here("size/plots"),
        width = 30, height = 10, units = "cm")
