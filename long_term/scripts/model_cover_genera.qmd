@@ -455,6 +455,29 @@ ggsave(filename = "plot_change_cover_gen.pdf",
        width = 17, height = 14, units  = "cm")
 ```
 
+Overview table SI-1
+
+```{r}
+post_predS %>% 
+  filter(year > 2019) %>% 
+  select(-l_80, -u_80) %>% 
+  pivot_longer(cols = median:u_95) %>% 
+  mutate(gen_type = paste(name, genus, sep ="_")) %>% 
+  arrange(rev(genus)) %>%
+  dplyr::select(-name, -genus) %>% 
+  pivot_wider(names_from = gen_type, values_from = value) %>% 
+  mutate_if(is.numeric, txtRound, 1) %>% 
+  arrange(rev(coast), year) %>%
+  ungroup() %>% 
+  dplyr::select(-coast) %>% 
+  setNames(c("year", rep(c("median", "l95", "u95"), 3))) %>% 
+  htmlTable(rnames = FALSE,
+            rgroup = c("West", "North", "East"),
+            n.rgroup = rep(4, 3),
+            cgroup = c("","Pocillopora", "Montipora", "Acropora"),
+            n.cgroup = c(1,3,3,3))
+```
+
 ```{r}
 post_predS %>% 
   filter(genus == "Pocillopora", year > 2021, coast == "North")
