@@ -437,7 +437,7 @@ plot_change_cover_gen <- post_predS %>%
   facet_wrap(~fct_relevel(genus, "Pocillopora", "Montipora", "Acropora"), ncol = 1, scales = "free")+
     scale_colour_manual(values = col_coast, name = NULL)+
   geom_point(aes(y = median), position = position_dodge(width = .1))+
-    labs( y = expression(Delta~"Cover (%)"), x = NULL)+
+    labs( y = expression(Delta~"Relative cover (%)"), x = NULL)+
     theme_andi()+
     theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -570,7 +570,7 @@ plot_dhw <- pred_dhw_genS %>%
   scale_colour_manual(values = cols_genera, name = NULL)+
   scale_fill_manual(values = cols_coast_genus, name = NULL)+
   facet_wrap(~genus, scales = "free_y", ncol = 1)+
-  labs(y = expression(Delta~"Cover (%"~yr^-1*")"), x = expression(AHS[max]), tag = "A")+
+  labs(y = expression(Delta~"Relative cover (%"~yr^-1*")"), x = expression(AHS[max]), tag = "A")+
   theme_andi()+
   theme(legend.position = "none",
         plot.title = element_text(face = "bold", hjust = 0.5),
@@ -628,7 +628,7 @@ plot_slope_gen<- slope_gen %>%
   geom_density_ridges_gradient(aes(fill = genus))+
   geom_vline(xintercept = 0, linetype = "11")+
   geom_text(data = dat_above0, aes(x = 6, label = above_0), hjust = 0, vjust = -2)+
-  labs(x = expression(Delta~"% cover"~AHS[max]^-1), y = "Density", tag = "B")+
+  labs(x = expression(Delta~"% Relative cover"~AHS[max]^-1), y = "Density", tag = "B")+
   scale_fill_manual(values = cols_genera, name = NULL)+
   coord_cartesian(xlim = c(-300, 200))+
   theme_andi()+
