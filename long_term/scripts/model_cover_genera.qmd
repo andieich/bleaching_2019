@@ -17,6 +17,7 @@ library(bayesplot)
 library(ggragged)
 library(ggridges)
 library(janitor)
+library(htmlTable)
 
 # check how much of distribution is above 0
 above_0 <- function(x){
