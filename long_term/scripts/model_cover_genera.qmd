@@ -676,3 +676,87 @@ ggsave(filename = "plot_slope_both_gen.pdf",
        path = here("long_term/plots/"),
        width = 22, height = 16, units  = "cm")
 ```
+
+## Plot Cover
+
+Get data
+
+```{r}
+#take original data
+dat_allgenera <-  dat %>% 
+  left_join(dat_meta, by = "marine_area") %>% 
+  filter(benthic_group == "coral", habitat == "Outer slope")
+
+top_5_corals <- dat_allgenera %>% 
+  group_by(year, marine_area, substrate) %>% 
+  summarise(proportion = mean(proportion)) %>%  #mean coral cover per site 
+  group_by(substrate) %>% 
+  summarise(proportion = mean(proportion) %>% 
+              round(2)) %>% 
+  arrange(desc(proportion)) %>% 
+  slice(1:5) %>% 
+  pull(substrate)
+
+
+
+dat_allgenera <- dat_allgenera %>% 
+  mutate(genus = ifelse(substrate %in% top_5_corals, substrate, "Other")) %>% 
+  dplyr::select(-substrate) %>% 
+  group_by(across(c(-proportion))) %>% 
+  summarise(proportion = sum(proportion, na.rm = T)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = genus, values_from = proportion, values_fill = 0) %>% 
+  dplyr::select(-benthic_group, -habitat) %>% 
+  pivot_longer(cols = 10:ncol(.),names_to = "genus", values_to = "proportion") %>% 
+  mutate(genus = fct_relevel(genus, "Other", after = Inf)) #set others to end
+
+
+# adapt site names
+dat_allgenera <- dat_allgenera %>% 
+  mutate(marine_area = case_when(marine_area == "Entre 2 baies" ~  "Entre deux baies",
+                                 marine_area == "Haapiti" ~  "Ha'apiti",
+                                 marine_area == "Maatea" ~  "Ma'atea",
+                                 marine_area == "Pihaena" ~ "Piha'ena",
+                                 marine_area == "Temae" ~ "Tema'e",
+                          .default = marine_area)) 
+
+```
+
+```{r}
+brewer.pal(11, "Set3")[7]
+
+
+cols_allgenera <- c(cols_genera, 
+                    "Porites" = brewer.pal(11, "Set3")[7], 
+                    "Astrea" = brewer.pal(11, "Set3")[8])
+
+
+plot_coral_cover <- dat_allgenera %>% 
+  group_by(marine_area, year, coast, genus) %>%  
+  summarise(cover_perc = mean(proportion*100, na.rm = T)) %>% 
+  ungroup() %>% 
+   mutate(coast = factor(coast, levels = c("West", "North", "East"))) %>% 
+  ggplot()+
+
+  geom_area(aes(fill = genus, x = year, y = cover_perc))+
+  
+  
+  labs(x = "Year", y = "Benthic cover (%)")+
+  scale_fill_manual(values = cols_allgenera)+
+  guides(fill=guide_legend(title="Genus"))+
+  
+  facet_ragged_cols(vars(marine_area), vars(coast))+
+  theme_minimal()+
+  theme(legend.position = "bottom")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_line(colour = "black", size = 0.2),
+        panel.border = element_rect(fill=NA));plot_coral_cover
+```
+
+```{r}
+ggsave(filename = "SI_coralgenera_cover.pdf",
+       plot = plot_coral_cover, 
+       path = here("long_term/plots/"),
+       width = 20, height = 15, units  = "cm")
+```
