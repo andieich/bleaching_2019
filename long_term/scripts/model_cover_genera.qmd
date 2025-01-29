@@ -453,7 +453,7 @@ plot_change_cover_gen
 ggsave(filename = "plot_change_cover_gen.pdf",
        plot = plot_change_cover_gen,
        path = here("long_term/plots/"),
-       width = 17, height = 14, units  = "cm")
+       width = 15*0.8, height = 25*0.8, units  = "cm")
 ```
 
 Overview table SI-1
