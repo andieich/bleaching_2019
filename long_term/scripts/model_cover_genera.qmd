@@ -182,6 +182,9 @@ predict_before_after_rel <- function(.model, .data, .get_summary = FALSE, ...){
 
 ```{r}
 dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds"))
+dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds")) %>% 
+  select(-observations)
+
 dat_meta <- read.csv(here("long_term/data/clean/moorea_mpa_site_metadata.csv"))
 ```
 
