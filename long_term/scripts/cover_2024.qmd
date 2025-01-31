@@ -1,0 +1,194 @@
+---
+title: "Get summary data per year"
+format: html
+editor: visual
+---
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+```
+
+get data
+
+```{r}
+dat <- read.csv(here("long_term/data/raw/2025_01_30_surveys2024.csv")) %>% 
+  clean_names() %>% 
+  filter(habitat == "Outer slope") %>% 
+  select(year, marine_area, habitat, transect, substrate, proportion)
+```
+
+Some checks
+
+```{r}
+dat$proportion %>% range()
+
+dat$marine_area %>% unique() %>% sort()
+
+dat$habitat %>% unique() %>% sort()
+
+dat$substrate %>% unique() %>% sort()
+```
+
+Is `transect` a unique ID, i.e. it occurs only once per survey year and site?
+
+```{r}
+dat %>% 
+  dplyr::select(year, marine_area, habitat, transect) %>% 
+  distinct() %>% 
+  group_by(year, marine_area, habitat, transect) %>% 
+  summarise(n = n()) %>% 
+  filter(n > 1)
+```
+
+**Clean up genera**
+
+-   Napopora to Porites
+
+-   only genera, no species
+
+```{r}
+dat <- dat %>% 
+  mutate(substrate = ifelse(substrate == "Napopora", "Porites", substrate)) %>% 
+  separate(col = substrate, into = "substrate", sep = " ") %>% #separate and keep genus name
+  mutate(substrate = tolower(substrate)) %>% #just to be sure
+  mutate(substrate = str_to_title(substrate)) %>% 
+  group_by(across(c(-proportion))) %>% 
+  summarise(proportion = sum(proportion, na.rm = T)) %>% 
+  ungroup()
+```
+
+Assign benthic groups
+
+```{r}
+corals <- c("Acanthastrea",
+            "Acropora",
+            "Astrea",
+            "Astreopora",
+            "Coscinaraea",
+            "Cyphastrea",
+            "Fungia",
+            "Gardineroseris",
+            "Goniastrea",
+            "Herpolitha",
+            "Leptastrea",
+            "Leptoseris",
+            "Lobophyllia",
+            "Montipora",
+            "Other_coral",
+            "Pavona",
+            "Pocillopora",
+            "Porites",
+            "Psammocora",
+            "Synarea")
+
+macro_algae <- c("Asparagopsis",
+                 "Boodlea",
+                 "Caulerpa",
+                 "Dictyota",
+                 "Halimeda",
+                 "Macroalgae",
+                 "Padina",
+                 "Sargassum",
+                 "Turbinaria", 
+                 "Peyssonnelia")
+
+substrate_ <- c("Mud",
+                "Pavement",
+                "Rubble",
+                "Sand")
+
+other <- c("Millepora",
+           "Other",
+           "Softcoral",
+           "Other_anemone")
+
+cyanos <- c("Cyanophyceae")
+
+turf <- c("Stegastes_turf")
+
+dead_coral <- c("Dead_coral", "Dead")
+```
+
+```{r}
+dat <- dat %>%
+  mutate(benthic_group = case_when(substrate %in% corals ~ "coral",
+                                   substrate %in% macro_algae ~ "macro_alga",
+                                   substrate %in% substrate_ ~ "substrate",
+                                   substrate %in% other ~ "other",
+                                   substrate %in% turf ~ "turf",
+                                   substrate %in% cyanos ~ "cyanos",
+                                   substrate %in% dead_coral ~ "dead_coral"))
+
+
+
+
+dat %>% 
+  filter(is.na(benthic_group))
+```
+
+Get % vals for corals
+
+```{r}
+dat <- dat %>% 
+  filter(benthic_group == "coral") %>% 
+  group_by(year, transect, marine_area) %>% 
+  summarise(perc = sum(100 * proportion))
+```
+
+Make wide and long again to get data for all genera. Otherwise, for some surveys, no corals remain \> the survey would be excluded when sub-setting to corals. Like that, it's 0%
+
+```{r}
+dat <- dat %>%
+  pivot_wider(names_from = transect, values_from = perc, values_fill = 0) %>% 
+  pivot_longer(cols = 3:ncol(.),names_to = "transect", values_to = "perc")
+```
+
+Check no of transects per site
+
+```{r}
+dat %>% 
+  group_by(year, marine_area) %>% 
+  summarise(n = n()) %>% 
+  filter(n != 3)
+#ok
+
+```
+
+Means per site
+
+```{r}
+dat <- dat %>% 
+  group_by(year, marine_area) %>% 
+  summarise(perc = mean(perc)) 
+```
+
+add orientation
+
+```{r}
+dat_meta <- read.csv(here("long_term/data/clean/moorea_mpa_site_metadata.csv"))
+
+dat <- dat %>% 
+  left_join(dat_meta, by = "marine_area")
+
+dat %>% 
+  filter(is.na(coast))
+```
+
+Means per orientation
+
+```{r}
+datS <- dat %>% 
+  group_by(year, coast) %>% 
+  summarise(
+    mean_perc = mean(perc),
+    sd = sd(perc),
+    n = n(),
+    se = sd / sqrt(n)
+  ) %>% 
+  select(-sd, -n) %>% 
+  mutate(across(where(is.numeric), round, 1))
+```
