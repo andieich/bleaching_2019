@@ -181,8 +181,8 @@ predict_before_after_rel <- function(.model, .data, .get_summary = FALSE, ...){
 ## Get data
 
 ```{r}
-dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds")) %>% 
-  select(-observations)
+dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds"))
+
 
 dat_meta <- read.csv(here("long_term/data/clean/moorea_mpa_site_metadata.csv"))
 ```
@@ -679,6 +679,18 @@ ggsave(filename = "plot_slope_both_gen.pdf",
        width = 22, height = 16, units  = "cm")
 ```
 
+Get summary data
+
+```{r}
+slope_gen %>% 
+  group_by(genus) %>% 
+  summarise(median = median(slope_val, na.rm = T),
+            l_95 = quantile(slope_val, 0.025, na.rm = T),
+            u_95 = quantile(slope_val, 0.975, na.rm = T)) %>% 
+    mutate_if(is.numeric, txtRound, 2) %>% 
+  htmlTable(rnames = FALSE)
+```
+
 ## Plot Cover
 
 Get data
@@ -687,9 +699,10 @@ Get data
 #take original data
 dat_allgenera <-  dat %>% 
   left_join(dat_meta, by = "marine_area") %>% 
-  filter(benthic_group == "coral", habitat == "Outer slope")
+  filter(benthic_group %in% c("coral", "macro_alga"), habitat == "Outer slope")
 
 top_5_corals <- dat_allgenera %>% 
+  filter(benthic_group == "coral") %>% 
   group_by(year, marine_area, substrate) %>% 
   summarise(proportion = mean(proportion)) %>%  #mean coral cover per site 
   group_by(substrate) %>% 
@@ -702,7 +715,8 @@ top_5_corals <- dat_allgenera %>%
 
 
 dat_allgenera <- dat_allgenera %>% 
-  mutate(genus = ifelse(substrate %in% top_5_corals, substrate, "Other")) %>% 
+  mutate(genus = ifelse(benthic_group == "macro_alga", "Macroalgae", substrate)) %>% 
+  mutate(genus = ifelse(genus %in% c(top_5_corals, "Macroalgae"), genus, "Other Corals")) %>% 
   dplyr::select(-substrate) %>% 
   group_by(across(c(-proportion))) %>% 
   summarise(proportion = sum(proportion, na.rm = T)) %>% 
@@ -710,7 +724,8 @@ dat_allgenera <- dat_allgenera %>%
   pivot_wider(names_from = genus, values_from = proportion, values_fill = 0) %>% 
   dplyr::select(-benthic_group, -habitat) %>% 
   pivot_longer(cols = 10:ncol(.),names_to = "genus", values_to = "proportion") %>% 
-  mutate(genus = fct_relevel(genus, "Other", after = Inf)) #set others to end
+  mutate(genus = fct_relevel(genus, "Other Corals", after =  Inf)) %>%  #set others to  last
+  mutate(genus = fct_relevel(genus, "Macroalgae", after = 0L)) #set Macroalgae to first
 
 
 # adapt site names
@@ -728,9 +743,11 @@ dat_allgenera <- dat_allgenera %>%
 brewer.pal(11, "Set3")[7]
 
 
-cols_allgenera <- c(cols_genera, 
+cols_allgenera <- c(cols_genera[1:3], 
+                    "Other Corals" = "grey70",
                     "Porites" = brewer.pal(11, "Set3")[7], 
-                    "Astrea" = brewer.pal(11, "Set3")[8])
+                    "Astrea" = brewer.pal(11, "Set3")[8],
+                    "Macroalgae" = "darkgreen")
 
 
 plot_coral_cover <- dat_allgenera %>% 
