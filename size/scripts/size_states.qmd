@@ -97,6 +97,7 @@ plot <- dat_predS %>%
                             "grew" = "growth",
                             "shrunk" = "partial mortality")) %>% 
   ggplot(aes(x = log_area))+
+  geom_vline(xintercept = log(10+1), linetype = "11", colour = "grey")+
   geom_ribbon(aes(x = log_area, ymin = l95, ymax = u95, fill = .category), alpha = .2)+
   geom_ribbon(aes(x = log_area, ymin = l90, ymax = u90, fill = .category), alpha = .2)+
   geom_ribbon(aes(x = log_area, ymin = l80, ymax = u80, fill = .category), alpha = .2)+
