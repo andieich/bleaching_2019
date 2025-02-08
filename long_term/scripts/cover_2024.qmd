@@ -182,7 +182,7 @@ Means per orientation
 
 ```{r}
 datS <- dat %>% 
-  group_by(year, coast) %>% 
+  group_by(year) %>% 
   summarise(
     mean_perc = mean(perc),
     sd = sd(perc),
