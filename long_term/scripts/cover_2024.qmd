@@ -192,3 +192,16 @@ datS <- dat %>%
   select(-sd, -n) %>% 
   mutate(across(where(is.numeric), round, 1))
 ```
+
+Relative cover after bleaching
+
+```{r}
+cover_2019 <- datS %>% 
+  filter(year == 2019) %>% 
+  pull(mean_perc)
+
+datS_rel <- datS %>% 
+  filter(year >= 2019) %>% 
+  mutate(rel_mean_perc = round(100*mean_perc/cover_2019,1)) %>% 
+  select(year, rel_mean_perc)
+```
