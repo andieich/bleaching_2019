@@ -202,6 +202,6 @@ cover_2019 <- datS %>%
 
 datS_rel <- datS %>% 
   filter(year >= 2019) %>% 
-  mutate(rel_mean_perc = round(100*mean_perc/cover_2019,1)) %>% 
+  mutate(rel_mean_perc = round(100*mean_perc/cover_2019,0)) %>% 
   select(year, rel_mean_perc)
 ```
