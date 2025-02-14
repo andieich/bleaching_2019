@@ -353,28 +353,280 @@ dat_genus_delta %>%
 
 `normal(0, 1)` according to loo compare better than `normal(0, 5)` and `normal(0, 10)`
 
+Best model according to [compare_models.R](compare_models.R)
+
 ```{r}
-m_ccover_genus<- brm(counts|trials(50) ~ marine_area*factor(year)*genus + (1|marine_area),
-                     data = dat_genus_delta,
-                     family = binomial(),
-                     iter = 4000,
-                      prior = c(prior(normal(0, 1), class = b),
-                                prior(normal(0, 1), class = Intercept)),
-                     warmup = 2000,
-                     chains = 4,
-                     cores = 4,
-                     threads = threading(2, static = T),
-                     control = list(adapt_delta = 0.99),
-                     seed = 123,
-                     file = here("long_term/models/m_cover_genus"),
-                     backend = "cmdstanr") 
+m_ccover_genus <- brm(
+  counts |
+    trials(50) ~ max_dhw * factor(year) * genus
+  t,
+  data = dat_genus_delta,
+  family = binomial(),
+  iter = 4000,
+  prior = c(prior(normal(0, 1), class = b), prior(normal(0, 1), class = Intercept)),
+  warmup = 2000,
+  chains = 4,
+  cores = 4,
+  threads = threading(2, static = T),
+  control = list(adapt_delta = 0.99, max_treedepth = 13),
+  seed = 123,
+  file = here("long_term/models/m_cover_genus"),
+  backend = "cmdstanr"
+) 
 ```
 
 ```{r}
-summary(m_ccover_genus)#Rhat ok
-pp_check(m_ccover_genus, ndraws = 100)
-bayes_R2(m_ccover_genus)#0.89
+summary(m_ccover_genus)#Rhats ok
+pp_check(m_ccover_genus, ndraws = 100) # good
+
+library(performance)
+
+r2_bayes(m_ccover_genus)
+# Conditional R2: 0.889 (95% CI [0.875, 0.901]) # both
+# Marginal R2: 0.484 (95% CI [0.387, 0.661]) # only main
+
 ```
+
+#### Impact AHS_max
+
+Predict expected values for impact of AHS_max (along sequence from lowest to highest value) w/o site-specific impact
+
+```{r}
+
+new_data_ahs_max <- dat_genus_delta %>% 
+  dplyr::select(genus, year) %>% 
+  distinct() %>% 
+  expand_grid(max_dhw = seq(min(dat_genus_delta$max_dhw),max(dat_genus_delta$max_dhw), length = 100))
+
+pred_ahs_max <- epred_draws(m_ccover_genus,
+                    newdata = new_data_ahs_max, re_formula = NA) %>%
+  ungroup() %>% 
+  dplyr::select(.draw, max_dhw, genus, year, .epred) %>% 
+  pivot_wider(names_from = year, values_from = .epred) %>% 
+  clean_names() %>% 
+  mutate(perc_2019 = 100*(x2019/50),
+         perc_2020 = 100*(x2020/50),
+         perc_2021 = 100*(x2021/50),
+         perc_2022 = 100*(x2022/50),
+         perc_2023 = 100*(x2023/50)
+         ) %>% 
+  mutate(delta_2020 = 100*perc_2020/perc_2019,
+         delta_2021 = 100*perc_2021/perc_2019,
+         delta_2022 = 100*perc_2022/perc_2019,
+         delta_2023 = 100*perc_2023/perc_2019) %>%
+  ungroup() %>%
+  dplyr::select(max_dhw, genus, delta_2020, delta_2021, delta_2022, delta_2023, draw) %>% 
+  pivot_longer(delta_2020:delta_2023, names_to = "year", values_to = "percent") %>% 
+  mutate(year = substr(year, 7, 10) %>% 
+           as.numeric())
+
+
+
+pred_ahs_maxS <- pred_ahs_max %>% 
+ group_by(year, max_dhw, genus) %>% 
+  summarise(median = median(percent),
+             l_89 = quantile(percent, probs = (1-0.89)/2),
+             u_89 = quantile(percent, probs = 1-(1-0.89)/2),
+            # l_95 = quantile(percent, 0.025, na.rm = T),
+            # u_95 = quantile(percent, 0.975, na.rm = T),
+      ) %>% 
+    pivot_longer(cols = 4:6) %>% 
+  mutate(gr = paste(factor(max_dhw), name, sep = "_")) %>% 
+  ungroup()
+
+
+```
+
+```{r}
+
+pred_ahs_max_labels <- pred_ahs_maxS %>% 
+  filter(year == 2023) %>% 
+  group_by(name, genus) %>% 
+  summarise(mean = mean(value)) %>% 
+  mutate(name = recode(name, 
+                       "median" = "M",
+                       "l_89" = "L",
+                       "u_89" = "U"))
+
+plot_change_ahs_max <- pred_ahs_maxS %>%
+  ggplot() +
+  geom_line(aes(
+    x = year,
+    y = value,
+    col = max_dhw,
+    group = factor(gr)
+  )) +
+  geom_text(data = pred_ahs_max_labels,
+            aes(x = 2023.15, y = mean, label = name),
+            size = 3) +
+  scale_colour_viridis(name = expression(AHS[max])) +
+  facet_grid( ~ genus) +
+  labs(y = expression(Delta ~ "Relative cover (%)"), x = NULL) +
+  theme_andi() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    strip.text = element_text(face = "italic"),
+    legend.position = "bottom"
+  )
+
+plot_change_ahs_max
+
+
+ggsave(filename = "plot_change_ahs_max.pdf",
+       plot = plot_change_ahs_max,
+       path = here("long_term/plots/"),
+       height  = 15*0.8, width = 25*0.8, units  = "cm")
+```
+
+#### Impact marine_area
+
+```{r}
+new_data_marine_area <- dat_genus_delta %>% 
+  dplyr::select(genus, year, marine_area) %>% 
+  distinct() %>% 
+  left_join(dat_genus_delta %>% 
+              select(marine_area, max_dhw) %>% 
+              distinct(),
+            by = "marine_area")
+
+
+pred_marine_area <- epred_draws(m_ccover_genus,
+                    newdata = new_data_marine_area, 
+                    re_formula = NULL) %>%# include population random effect
+  ungroup() %>% 
+  dplyr::select(.draw, marine_area, genus, year, .epred, max_dhw) %>% 
+  pivot_wider(names_from = year, values_from = .epred) %>% 
+  clean_names() %>% 
+  mutate(perc_2019 = 100*(x2019/50),
+         perc_2020 = 100*(x2020/50),
+         perc_2021 = 100*(x2021/50),
+         perc_2022 = 100*(x2022/50),
+         perc_2023 = 100*(x2023/50)
+         ) %>% 
+  mutate(delta_2020 = 100*perc_2020/perc_2019,
+         delta_2021 = 100*perc_2021/perc_2019,
+         delta_2022 = 100*perc_2022/perc_2019,
+         delta_2023 = 100*perc_2023/perc_2019) %>%
+  ungroup() %>%
+  dplyr::select(marine_area, genus, delta_2020, delta_2021, delta_2022, delta_2023, draw, max_dhw) %>% 
+  pivot_longer(delta_2020:delta_2023, names_to = "year", values_to = "percent") %>% 
+  mutate(year = substr(year, 7, 10) %>% 
+           as.numeric())
+
+
+
+
+bin_ahs <- data.frame(max_dhw = pred_marine_area$max_dhw %>%
+                        unique() %>%
+                        sort(),
+                      bin = c(1,1,1,1,1,2,2,2,2,3,3,3,3)) %>% 
+  group_by(bin) %>% 
+  mutate(min = round(min(max_dhw),2),
+         max = round(max(max_dhw),2),
+         gr_n = paste(min, max, sep = " - ")) %>% 
+  ungroup() %>% 
+  mutate(cols = c("#E69F00", "#56B4E9", "#009E73", "#999999", "#CC79A7",
+                  "#E69F00", "#56B4E9", "#009E73", "#999999",
+                  "#E69F00", "#56B4E9", "#009E73", "#999999")) %>% 
+  select(max_dhw, gr_n, cols)
+  
+
+
+pred_marine_areaS <- pred_marine_area %>% 
+ group_by(year, marine_area, genus, max_dhw) %>% 
+  summarise(median = median(percent),
+             l_89 = quantile(percent, probs = (1-0.89)/2),
+             u_89 = quantile(percent, probs = 1-(1-0.89)/2),
+            # l_95 = quantile(percent, 0.025, na.rm = T),
+            # u_95 = quantile(percent, 0.975, na.rm = T),
+      ) %>% 
+  mutate(gr_ahs = cut(max_dhw, 
+                    #  breaks = quantile(max_dhw, probs = seq(0, 1, length.out = 3)), 
+                    breaks = c(5.765000, 6.164286, 6.264714) ,
+                      include.lowest = TRUE)
+) %>% 
+  left_join(bin_ahs,
+            by = "max_dhw")
+
+
+# get colours
+cols_sites <- pred_marine_areaS %>% 
+  ungroup() %>% 
+  select(marine_area, cols) %>% 
+  distinct() %>% 
+  as.vector()
+
+cols_sites <- setNames(as.character(cols_sites$cols), cols_sites$marine_area)
+```
+
+```{r}
+
+library(ggrepel)
+
+datlab <- pred_marine_areaS %>% 
+  filter(year == 2020)
+
+
+plot_change_marine_area <- pred_marine_areaS %>%
+  ggplot(aes(x = year, 
+             group = marine_area)) +
+  geom_hline(yintercept = 100, linetype = "11", colour = "grey")+
+  geom_errorbar(
+    aes(ymin = l_89, 
+        ymax = u_89, 
+        col = marine_area),
+    width = 0,
+    position = position_dodge(width = .3)
+  ) +
+  geom_line(aes(y = median, 
+                colour = marine_area), 
+            position = position_dodge(width = .3)) +
+  geom_point(aes(y = median, 
+                colour = marine_area), 
+            position = position_dodge(width = .3),
+            size = .8) +
+  geom_text_repel(
+    data = datlab,
+    aes(
+      color = marine_area,
+      label = marine_area,
+      y = median
+    ),
+    
+     
+    # position = position_dodge(width = .3),
+    direction = "y",
+   xlim = c(2018, NA),
+  
+    nudge_x = -.5,
+    hjust = "right",
+    size = 3,
+    segment.size = .5,
+    segment.alpha = .5,
+    segment.linetype = "11",
+    box.padding = .4,
+    segment.curvature = 0.4,
+    segment.ncp = 3,
+    segment.angle = 20,
+  ) +
+  scale_x_continuous(breaks = seq(2020, 2023, by = 1),limits = c(2018.2,NA)) +
+  scale_colour_manual(values = cols_sites) +
+  facet_grid(genus ~ gr_n, scales = "free") +
+  theme_andi() +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black",  fill='transparent'))
+
+plot_change_marine_area
+
+ggsave(filename = "plot_change_marine_area.pdf",
+       plot = plot_change_marine_area,
+       path = here("long_term/plots/"),
+       width  = 28*0.8, height = 25*0.8, units  = "cm")
+```
+
+### OLD DELETE LATER FROM HERE
 
 Get predicted draws
 
@@ -507,6 +759,8 @@ post_predS %>%
   dplyr::select(year, coast, median) %>% 
   pivot_wider(names_from = year, values_from = median)
 ```
+
+### OLD DELETE LATER TO HERE
 
 ## DHW in 2019
 
