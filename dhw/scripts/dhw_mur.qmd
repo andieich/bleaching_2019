@@ -210,7 +210,8 @@ plot_dhw_map <- ggplot() +
             show.legend = F)+
   #actual coloured points
   geom_point(data = sites, 
-             aes(x = lon, y = lat, col = coast), 
+             aes(x = lon, y = lat), 
+             col = "#E54E21FF",
              size = 2, 
             show.legend = F)+
   geom_text_repel(data = sites, 
