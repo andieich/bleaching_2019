@@ -163,3 +163,94 @@ summary(m6)
 summary(m7)
 summary(m8)
 summary(m9)
+
+m6<- brm(counts|trials(50) ~ max_dhw*factor(year)*genus + (1|marine_area) + (1|genus) + (1|year:marine_area:genus),
+         data = dat_genus_delta,
+         family = binomial(),
+         iter = 4000,
+         prior = c(prior(normal(0, 1), class = b),
+                   prior(normal(0, 1), class = Intercept)),
+         warmup = 2000,
+         chains = 4,
+         cores = 4,
+         threads = threading(2, static = T),
+        # control = list(adapt_delta = 0.99),
+         seed = 123,
+         backend = "cmdstanr") 
+
+
+m6.1<- brm(counts|trials(50) ~ max_dhw*factor(year)*genus + (1|marine_area) + (1|genus) + (1|year:marine_area:genus),
+         data = dat_genus_delta,
+         family = binomial(),
+         iter = 4000,
+         prior = c(prior(normal(0, 10), class = b),
+                   prior(normal(0, 10), class = Intercept)),
+         warmup = 2000,
+         chains = 4,
+         cores = 4,
+         threads = threading(2, static = T),
+        # control = list(adapt_delta = 0.99),
+         seed = 123,
+         backend = "cmdstanr") 
+
+m6 <- m6 %>% 
+  add_criterion("loo", moment_match = TRUE)
+
+m6.1 <- m6.1 %>% 
+  add_criterion("loo",moment_match = TRUE)
+
+loo_compare(m6.1, m6)
+
+r2_bayes(m6.1)
+
+r2_bayes(m6)
+
+
+
+m6p<- brm(counts|trials(50) ~ max_dhw*factor(year)*genus + (1|marine_area) + (1|genus) + (1|year:marine_area:genus),
+         data = dat_genus_delta,
+         family = binomial(),
+         iter = 4000,
+         prior = c(prior(normal(0, 1), class = b),
+                   prior(normal(0, 1), class = Intercept)),
+         warmup = 2000,
+         chains = 4,
+         cores = 4,
+         threads = threading(2, static = T),
+         # control = list(adapt_delta = 0.99),
+         seed = 123,
+         backend = "cmdstanr", sample_prior = "only") 
+
+
+m6.1p<- brm(counts|trials(50) ~ max_dhw*factor(year)*genus + (1|marine_area) + (1|genus) + (1|year:marine_area:genus),
+           data = dat_genus_delta,
+           family = binomial(),
+           iter = 4000,
+           prior = c(prior(normal(0, 10), class = b),
+                     prior(normal(0, 10), class = Intercept)),
+           warmup = 2000,
+           chains = 4,
+           cores = 4,
+           threads = threading(2, static = T),
+           # control = list(adapt_delta = 0.99),
+           seed = 123,
+           backend = "cmdstanr", sample_prior = "only") 
+
+m6.2p<- brm(counts|trials(50) ~ max_dhw*factor(year)*genus + (1|marine_area) + (1|genus) + (1|year:marine_area:genus),
+            data = dat_genus_delta,
+            family = binomial(),
+            iter = 4000,
+            prior = c(prior(normal(0, 2), class = b),
+                      prior(normal(0, 2), class = Intercept)),
+            warmup = 2000,
+            chains = 4,
+            cores = 4,
+            threads = threading(2, static = T),
+            # control = list(adapt_delta = 0.99),
+            seed = 123,
+            backend = "cmdstanr", sample_prior = "only") 
+
+
+pp_check(m6p)
+pp_check(m6.1p)
+pp_check(m6.2p)
