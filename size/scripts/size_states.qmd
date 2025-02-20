@@ -308,18 +308,21 @@ plot_states_before_ns <- plot_model(data = dat_state %>%
                        filter(comparison == "2016_2018"), 
            model = m_state_16_18, sep_by_site = F,
            title = "2016 - 2018")$plot +
+  labs(tag = "A")+
   theme(legend.position = "none")
 
 plot_states_during_ns <- plot_model(data = dat_state %>% 
                        filter(comparison == "2018_2020"), 
            model = m_state_18_20, sep_by_site = F,
            title = "2018 - 2020")$plot +
+    labs(tag = "B")+
   theme(legend.position = "none")
 
 plot_states_after_ns <- plot_model(data = dat_state %>% 
                        filter(comparison == "2020_2022"), 
            model = m_state_20_22, sep_by_site = F,
-           title = "2020 - 2022")$plot
+           title = "2020 - 2022")$plot+
+  labs(tag = "C")
 
 plot_states_ns = plot_states_before_ns/plot_states_during_ns/plot_states_after_ns
 plot_states_ns
