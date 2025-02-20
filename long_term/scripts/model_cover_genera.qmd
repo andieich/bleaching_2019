@@ -21,6 +21,7 @@ library(htmlTable)
 library(viridis)
 library(ggpp)
 library(ggrepel)
+library(performance)
 
 # check how much of distribution is above 0
 above_0 <- function(x){
@@ -357,10 +358,15 @@ dat_genus_delta %>%
 Best model according to [compare_models.R](compare_models.R)
 
 ```{r}
+#ensure year is factor
+dat_genus_delta <- dat_genus_delta %>% 
+  mutate(f_year = paste0("f", year) %>% 
+           factor())
+
 m_ccover_genus <- brm(
   counts |
-    trials(50) ~ max_dhw * factor(year) * genus
-  + (1 | marine_area) + (1 | genus) + (1 | year:marine_area:genus),
+    trials(50) ~ max_dhw * f_year * genus
+  + (1 | marine_area) + (1 | genus) + (1 | f_year:marine_area:genus),
   data = dat_genus_delta,
   family = binomial(),
   iter = 4000,
@@ -378,24 +384,33 @@ m_ccover_genus <- brm(
 ```
 
 ```{r}
-summary(m_ccover_genus)#Rhats ok, 1 div trans
+summary(m_ccover_genus)#Rhats ok, 5 div trans
 pp_check(m_ccover_genus, ndraws = 100) # good
 
-library(performance)
+
 
 r2_bayes(m_ccover_genus)
-  # Conditional R2: 0.889 (95% CI [0.876, 0.901])
-  #    Marginal R2: 0.575 (95% CI [0.053, 0.774])
+  # Conditional R2: 0.890 (95% CI [0.876, 0.901])
+  #    Marginal R2: 0.573 (95% CI [0.071, 0.778])
 
 ```
 
 #### Impact AHS_max
 
+get values
+
+```{r}
+min(dat_genus_delta$max_dhw) %>%  round(2)
+mean(dat_genus_delta$max_dhw) %>%  round(2)
+max(dat_genus_delta$max_dhw) %>%  round(2)
+```
+
 Predict expected values for impact of AHS_max (along sequence from lowest to highest value) w/o site-specific impact
 
 ```{r}
+
 new_data_ahs_max <- dat_genus_delta %>% 
-  dplyr::select(genus, year) %>% 
+  dplyr::select(genus, f_year) %>% 
   distinct() %>% 
   expand_grid(max_dhw = c(min(dat_genus_delta$max_dhw),
                           mean(dat_genus_delta$max_dhw),
@@ -404,14 +419,14 @@ new_data_ahs_max <- dat_genus_delta %>%
 pred_ahs_max <- epred_draws(m_ccover_genus,
                     newdata = new_data_ahs_max, re_formula = NA) %>%
   ungroup() %>% 
-  dplyr::select(.draw, max_dhw, genus, year, .epred) %>% 
-  pivot_wider(names_from = year, values_from = .epred) %>% 
+  dplyr::select(.draw, max_dhw, genus, f_year, .epred) %>% 
+  pivot_wider(names_from = f_year, values_from = .epred) %>% 
   clean_names() %>% 
-  mutate(perc_2019 = 100*(x2019/50),
-         perc_2020 = 100*(x2020/50),
-         perc_2021 = 100*(x2021/50),
-         perc_2022 = 100*(x2022/50),
-         perc_2023 = 100*(x2023/50)
+  mutate(perc_2019 = 100*(f2019/50),
+         perc_2020 = 100*(f2020/50),
+         perc_2021 = 100*(f2021/50),
+         perc_2022 = 100*(f2022/50),
+         perc_2023 = 100*(f2023/50)
          ) %>% 
   mutate(delta_2020 = 100*perc_2020/perc_2019,
          delta_2021 = 100*perc_2021/perc_2019,
@@ -443,7 +458,7 @@ pred_ahs_maxS <- pred_ahs_max %>%
                            .default = "mean"))
 
 #random draws of distribution
-set.seed(44)
+set.seed(123)
 sample_draws <- sample(1:8000, size = 50)
 
 pred_ahs_max_100 <- pred_ahs_max %>% 
@@ -510,7 +525,7 @@ pred_ahs_maxS %>%
 
 ```{r}
 new_data_marine_area <- dat_genus_delta %>% 
-  dplyr::select(genus, year, marine_area) %>% 
+  dplyr::select(genus, f_year, marine_area) %>% 
   distinct() %>% 
   left_join(dat_genus_delta %>% 
               select(marine_area, max_dhw) %>% 
@@ -522,14 +537,14 @@ pred_marine_area <- epred_draws(m_ccover_genus,
                     newdata = new_data_marine_area, 
                     re_formula = NULL) %>%# include population random effect
   ungroup() %>% 
-  dplyr::select(.draw, marine_area, genus, year, .epred, max_dhw) %>% 
-  pivot_wider(names_from = year, values_from = .epred) %>% 
+  dplyr::select(.draw, marine_area, genus, f_year, .epred, max_dhw) %>% 
+  pivot_wider(names_from = f_year, values_from = .epred) %>% 
   clean_names() %>% 
-  mutate(perc_2019 = 100*(x2019/50),
-         perc_2020 = 100*(x2020/50),
-         perc_2021 = 100*(x2021/50),
-         perc_2022 = 100*(x2022/50),
-         perc_2023 = 100*(x2023/50)
+  mutate(perc_2019 = 100*(f2019/50),
+         perc_2020 = 100*(f2020/50),
+         perc_2021 = 100*(f2021/50),
+         perc_2022 = 100*(f2022/50),
+         perc_2023 = 100*(f2023/50)
          ) %>% 
   mutate(delta_2020 = 100*perc_2020/perc_2019,
          delta_2021 = 100*perc_2021/perc_2019,
@@ -676,6 +691,10 @@ m_ccover_genus_19_dhw <- brm(
 summary(m_ccover_genus_19_dhw)#no div trans but max treedepth warning. Rhat ok
 pp_check(m_ccover_genus_19_dhw, ndraws = 100)#good
 bayes_R2(m_ccover_genus_19_dhw)#0.85
+
+r2_bayes(m_ccover_genus_19_dhw)
+  # Conditional R2: 0.849 (95% CI [0.824, 0.871])
+  #    Marginal R2: 0.742 (95% CI [0.669, 0.793])
 ```
 
 ### Line plot
@@ -698,6 +717,8 @@ pred_dhw_gen <-  epred_draws(m_ccover_genus_19_dhw,
   dplyr::select(max_dhw, .draw, .epred, year, genus) %>%
   pivot_wider(names_from = year, values_from = .epred) %>%
   mutate(delta =  (`2020`- `2019`)/`2019`)
+
+
 
 pred_dhw_genS <- pred_dhw_gen %>% 
   group_by(max_dhw, genus) %>% 
@@ -751,20 +772,20 @@ plot_dhw
 Assuming linear relationship over whole course of max_DHW calculate slope between lowest max_DHW value and highest. Calculate this slope for each genus
 
 ```{r}
-slope_gen <- epred_draws(m_ccover_genus_19_dhw, 
+slope_gen <- epred_draws(m_ccover_genus_19_dhw,
                          re_formula = NA,
-                         newdata = 
+                         newdata =
   expand_grid(max_dhw = c(min(dat_genus_delta$max_dhw),
                              max(dat_genus_delta$max_dhw)),
               year = 2019:2020,
-              genus = dat_genus_delta$genus %>% unique())) %>% 
-  ungroup() %>% 
-  dplyr::select(max_dhw, year, .epred, .draw, genus) %>% 
-  pivot_wider(names_from = year, values_from = .epred) %>% 
-  mutate(delta =  (`2020`- `2019`)/`2019`) %>% 
-  dplyr::select(delta, max_dhw, .draw, genus) %>% 
-  pivot_wider(names_from = max_dhw, values_from = delta) %>% 
-  mutate(slope_val = (`6.26471428571429` - `5.765`) / (6.26471428571429 - 5.765) ) %>% 
+              genus = dat_genus_delta$genus %>% unique())) %>%
+  ungroup() %>%
+  dplyr::select(max_dhw, year, .epred, .draw, genus) %>%
+  pivot_wider(names_from = year, values_from = .epred) %>%
+  mutate(delta =  (`2020`- `2019`)/`2019`) %>%
+  dplyr::select(delta, max_dhw, .draw, genus) %>%
+  pivot_wider(names_from = max_dhw, values_from = delta) %>%
+  mutate(slope_val = (`6.26471428571429` - `5.765`) / (6.26471428571429 - 5.765) ) %>%
   mutate(genus = fct_reorder(.f = genus, .x = slope_val, .fun = mean, .desc = T))
 ```
 
