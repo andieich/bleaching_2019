@@ -353,6 +353,31 @@ dat_genus_delta %>%
   mutate(across(where(is.numeric), round, 1))
 ```
 
+Extract points per year
+
+```{r}
+#Acropora
+dat_genus_delta %>% 
+  filter(genus == "Acropora") %>% 
+  group_by(year) %>% 
+  summarise(suM_points = sum(counts)) 
+
+#Montipora
+dat_genus_delta %>% 
+  filter(genus == "Montipora") %>% 
+  group_by(year) %>% 
+  summarise(suM_points = sum(counts)) 
+
+# Total points
+dat_genus_delta %>% 
+  select(year, marine_area, transect) %>% 
+  distinct() %>% 
+  group_by(year) %>% 
+  summarise(n = n()) %>% 
+  mutate(points_tot = n*50)
+
+```
+
 ### Model
 
 Best model according to [compare_models.R](compare_models.R)
@@ -455,7 +480,8 @@ pred_ahs_maxS <- pred_ahs_max %>%
                       median = 100))  %>% 
   mutate(AHS = case_when(max_dhw <  6 ~ "min",
                          max_dhw >  6.2 ~ "max",
-                           .default = "mean"))
+                           .default = "mean")) %>% 
+  mutate(genus = fct_rev(genus))
 
 #random draws of distribution
 set.seed(123)
@@ -473,7 +499,8 @@ pred_ahs_max_100 <- pred_ahs_max %>%
   mutate(group = paste(max_dhw, draw, sep = "_")) %>% 
   mutate(AHS = case_when(max_dhw <  6 ~ "min",
                          max_dhw >  6.2 ~ "max",
-                           .default = "mean"))
+                           .default = "mean")) %>% 
+  mutate(genus = fct_rev(genus))
 
 col_ahs <- c("#FC4E07", "#E7B800", "#00AFBB")
 
@@ -580,8 +607,8 @@ pred_marine_areaS <- pred_marine_area %>%
   summarise(median = median(percent),
              l_89 = quantile(percent, probs = (1-0.89)/2),
              u_89 = quantile(percent, probs = 1-(1-0.89)/2),
-            # l_95 = quantile(percent, 0.025, na.rm = T),
-            # u_95 = quantile(percent, 0.975, na.rm = T),
+            l_95 = quantile(percent, 0.025, na.rm = T),
+            u_95 = quantile(percent, 0.975, na.rm = T),
       ) %>% 
   mutate(gr_ahs = cut(max_dhw, 
                     #  breaks = quantile(max_dhw, probs = seq(0, 1, length.out = 3)), 
@@ -589,7 +616,15 @@ pred_marine_areaS <- pred_marine_area %>%
                       include.lowest = TRUE)
 ) %>% 
   left_join(bin_ahs,
-            by = "max_dhw")
+            by = "max_dhw") %>% 
+  mutate(genus = fct_rev(genus),
+         gr_n = paste0("AHS[max] * ': ' * ", gr_n, " * ~degree * C^{-1}"),
+         genus_orig = genus)
+
+levels(pred_marine_areaS$genus) <- c("Pocillopora" = expression(italic("Pocillopora")),
+                                     "Montipora" = expression(italic("Montipora")),
+                                     "Acropora" = expression(italic("Acropora")))
+
 
 
 # get colours
@@ -635,6 +670,7 @@ plot_change_marine_area <- pred_marine_areaS %>%
     direction = "y",
     hjust = "right",
     size = 3,
+    force = 10,
     segment.size = .5,
     segment.alpha = .5,
     segment.linetype = "11",
@@ -642,15 +678,17 @@ plot_change_marine_area <- pred_marine_areaS %>%
     segment.curvature = 0.4,
     segment.ncp = 3,
     segment.angle = 20,
-   position = position_dodgenudge(x = -.5,  width = 0.3)
+    position = position_dodgenudge_to(width = .3, x = 2018.4),
   ) +
   scale_x_continuous(breaks = seq(2020, 2023, by = 1),limits = c(2018.2,NA)) +
   scale_colour_manual(values = cols_sites) +
   labs(y = expression(Delta ~ "Relative cover (%)"), x = NULL) +
-  facet_grid(genus ~ gr_n) +
+  facet_grid(genus ~ gr_n, labeller = label_parsed, scales = "free") +
   theme_andi() +
   theme(legend.position = "none",
-        panel.background = element_rect(colour = "black",  fill='transparent'))
+        panel.background = element_rect(colour = "black",  fill='transparent'),
+        strip.text.y = element_text(face = "italic"))
+
 
 plot_change_marine_area
 
@@ -658,6 +696,21 @@ ggsave(filename = "plot_change_marine_area.pdf",
        plot = plot_change_marine_area,
        path = here("long_term/plots/"),
        width  = 28*0.8, height = 25*0.8, units  = "cm")
+```
+
+Table for SI
+
+```{r}
+pred_marine_areaS %>% 
+  filter(year != 2019) %>% 
+  mutate(m_SI = paste0(round(median, 0), " [", round(l_95,0), ", ", round(u_95,0) ,"]")) %>% 
+  ungroup() %>% 
+  mutate(genus_year = paste(genus_orig, year, sep = "_")) %>% 
+  select(marine_area, genus_year, m_SI) %>% 
+  pivot_wider(names_from = genus_year, values_from = m_SI) %>% 
+  htmlTable(cgroup = c("",2020:2023),
+            n.cgroup = c(1,rep(3, 4)),
+            rnames = FALSE) 
 ```
 
 ## DHW in 2019
