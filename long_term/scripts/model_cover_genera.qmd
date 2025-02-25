@@ -360,13 +360,15 @@ Extract points per year
 dat_genus_delta %>% 
   filter(genus == "Acropora") %>% 
   group_by(year) %>% 
-  summarise(suM_points = sum(counts)) 
+  summarise(suM_points = sum(counts),
+            mean_points = mean(counts)) 
 
 #Montipora
 dat_genus_delta %>% 
   filter(genus == "Montipora") %>% 
   group_by(year) %>% 
-  summarise(suM_points = sum(counts)) 
+  summarise(suM_points = sum(counts),
+            mean_points = mean(counts)) 
 
 # Total points
 dat_genus_delta %>% 
@@ -393,7 +395,8 @@ dat_genus_delta %>%
 dat_genus_delta %>% 
   filter(marine_area == "Taotaha", genus == "Montipora") %>% 
   group_by(year) %>% 
-  summarise(suM_points = sum(counts)) 
+  summarise(sum_points = sum(counts),
+            mean_points = mean(counts)) 
 ```
 
 ### Model
@@ -481,6 +484,8 @@ pred_ahs_max <- epred_draws(m_ccover_genus,
   mutate(year = substr(year, 7, 10) %>% 
            as.numeric())
 
+
+
 #summary with median and CIs
 pred_ahs_maxS <- pred_ahs_max %>% 
  group_by(year, max_dhw, genus) %>% 
@@ -499,7 +504,8 @@ pred_ahs_maxS <- pred_ahs_max %>%
   mutate(AHS = case_when(max_dhw <  6 ~ "min",
                          max_dhw >  6.2 ~ "max",
                            .default = "mean")) %>% 
-  mutate(genus = fct_rev(genus))
+  mutate(genus = fct_rev(genus),
+         AHS = factor(AHS, levels =c("min", "mean", "max")))
 
 #random draws of distribution
 set.seed(123)
@@ -518,9 +524,10 @@ pred_ahs_max_100 <- pred_ahs_max %>%
   mutate(AHS = case_when(max_dhw <  6 ~ "min",
                          max_dhw >  6.2 ~ "max",
                            .default = "mean")) %>% 
-  mutate(genus = fct_rev(genus))
+  mutate(genus = fct_rev(genus),
+         AHS = factor(AHS, levels =c("min", "mean", "max")))
 
-col_ahs <- c("#FC4E07", "#E7B800", "#00AFBB")
+col_ahs <- c("max" = "#FC4E07", "mean" = "#E7B800", "min" = "#00AFBB")
 
 
 plot_change_ahs_max <- pred_ahs_max_100 %>% 
