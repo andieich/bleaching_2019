@@ -1,0 +1,784 @@
+---
+title: "Model: Bleaching Mortality and Recovery"
+---
+
+## Libraries & Functions
+
+```{r}
+library(tidyverse)
+library(here)
+library(RColorBrewer)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(bayesplot)
+library(ggragged)
+library(ggridges)
+library(janitor)
+library(htmlTable)
+library(viridis)
+library(ggpp)
+library(ggrepel)
+library(performance)
+
+# get functions
+
+source(here("long_term/scripts/model_helper_fcts.R"))
+```
+
+
+### Model recovery
+
+-  binomial distribution to model counts with resp. coral genera alogn 50 points per transect for all years incl. 2019
+
+```{r}
+m_ccover_genus <- brm(
+  counts |
+    trials(50) ~
+    max_dhw *
+    f_year *
+    genus +
+    (1 | marine_area) +
+    (1 | genus) +
+    (1 | f_year:marine_area:genus),
+  data = dat_genus_delta,
+  family = binomial(),
+  iter = 4000,
+  prior = c(
+    prior(normal(0, 10), class = b),
+    prior(normal(0, 10), class = Intercept)
+  ),
+  warmup = 2000,
+  chains = 4,
+  cores = 4,
+  threads = threading(2, static = T),
+  control = list(adapt_delta = 0.99, max_treedepth = 13),
+  seed = 123,
+  file = here("long_term/models/m_cover_genus"),
+  backend = "cmdstanr"
+)
+```
+
+Model checks
+
+```{r}
+summary(m_ccover_genus) #Rhats ok, 5 div trans
+pp_check(m_ccover_genus, ndraws = 100) # good
+
+r2_bayes(m_ccover_genus)
+# Conditional R2: 0.890 (95% CI [0.876, 0.901])
+# Marginal R2: 0.573 (95% CI [0.071, 0.778])
+```
+
+#### Impact AHS_max
+
+get values
+
+```{r}
+min(dat_genus_delta$max_dhw) %>% round(2) # 5.76
+mean(dat_genus_delta$max_dhw) %>% round(2) # 6.06
+max(dat_genus_delta$max_dhw) %>% round(2) # 6.26
+```
+
+Predict expected values for impact of AHS_max (along sequence from lowest to highest value) w/o site-specific impact
+
+```{r}
+# maake new data frame
+
+new_data_ahs_max <- dat_genus_delta %>%
+  dplyr::select(genus, f_year) %>%
+  distinct() %>%
+  expand_grid(
+    max_dhw = c(
+      min(dat_genus_delta$max_dhw),
+      mean(dat_genus_delta$max_dhw),
+      max(dat_genus_delta$max_dhw)
+    )
+  )
+
+# and use to predict
+
+pred_ahs_max <- epred_draws(
+  m_ccover_genus,
+  newdata = new_data_ahs_max,
+  re_formula = NA
+) %>%
+  ungroup() %>%
+  dplyr::select(.draw, max_dhw, genus, f_year, .epred) %>%
+  pivot_wider(names_from = f_year, values_from = .epred) %>%
+  clean_names() %>%
+  mutate(
+    perc_2019 = 100 * (f2019 / 50),
+    perc_2020 = 100 * (f2020 / 50),
+    perc_2021 = 100 * (f2021 / 50),
+    perc_2022 = 100 * (f2022 / 50),
+    perc_2023 = 100 * (f2023 / 50)
+  ) %>%
+  mutate(
+    delta_2020 = 100 * perc_2020 / perc_2019,
+    delta_2021 = 100 * perc_2021 / perc_2019,
+    delta_2022 = 100 * perc_2022 / perc_2019,
+    delta_2023 = 100 * perc_2023 / perc_2019
+  ) %>%
+  ungroup() %>%
+  dplyr::select(
+    max_dhw,
+    genus,
+    delta_2020,
+    delta_2021,
+    delta_2022,
+    delta_2023,
+    draw
+  ) %>%
+  pivot_longer(
+    delta_2020:delta_2023,
+    names_to = "year",
+    values_to = "percent"
+  ) %>%
+  mutate(
+    year = substr(year, 7, 10) %>%
+      as.numeric()
+  )
+
+
+#summary with median and CIs
+pred_ahs_maxS <- pred_ahs_max %>%
+  group_by(year, max_dhw, genus) %>%
+  summarise(
+    median = median(percent),
+    l_89 = quantile(percent, probs = (1 - 0.89) / 2),
+    u_89 = quantile(percent, probs = 1 - (1 - 0.89) / 2),
+    l_95 = quantile(percent, probs = (1 - 0.95) / 2),
+    u_95 = quantile(percent, probs = 1 - (1 - 0.95) / 2),
+  ) %>%
+
+  ungroup() %>%
+  add_row(expand.grid(
+    year = 2019,
+    max_dhw = pred_ahs_max$max_dhw %>% unique(),
+    genus = pred_ahs_max$genus %>% unique(),
+    median = 100
+  )) %>%
+  mutate(
+    AHS = case_when(
+      max_dhw < 6 ~ "min",
+      max_dhw > 6.2 ~ "max",
+      .default = "mean"
+    )
+  ) %>%
+  mutate(
+    genus = fct_rev(genus),
+    AHS = factor(AHS, levels = c("min", "mean", "max"))
+  )
+
+#random draws of distribution
+set.seed(123)
+sample_draws <- sample(1:8000, size = 50)
+
+pred_ahs_max_100 <- pred_ahs_max %>%
+  group_by(max_dhw, genus, year) %>%
+  filter(draw %in% sample_draws) %>%
+  ungroup() %>%
+  add_row(expand.grid(
+    year = 2019,
+    max_dhw = pred_ahs_max$max_dhw %>% unique(),
+    genus = pred_ahs_max$genus %>% unique(),
+    draw = sample_draws,
+    percent = 100
+  )) %>%
+  mutate(group = paste(max_dhw, draw, sep = "_")) %>%
+  mutate(
+    AHS = case_when(
+      max_dhw < 6 ~ "min",
+      max_dhw > 6.2 ~ "max",
+      .default = "mean"
+    )
+  ) %>%
+  mutate(
+    genus = fct_rev(genus),
+    AHS = factor(AHS, levels = c("min", "mean", "max"))
+  )
+
+col_ahs <- c("max" = "#FC4E07", "mean" = "#E7B800", "min" = "#00AFBB")
+
+
+plot_change_ahs_max <- pred_ahs_max_100 %>%
+  ggplot(aes(x = year)) +
+  geom_hline(yintercept = 100, linetype = "11", col = "grey") +
+  geom_line(
+    aes(y = percent, col = AHS, group = group),
+    linewidth = .2,
+    alpha = .5
+  ) +
+  geom_line(
+    data = pred_ahs_maxS,
+    aes(y = median, group = AHS),
+    linewidth = 2,
+    col = "white"
+  ) +
+  geom_line(
+    data = pred_ahs_maxS,
+    aes(y = median, col = AHS, group = AHS),
+    linewidth = 1
+  ) +
+  geom_point(
+    data = pred_ahs_maxS,
+    aes(y = median, fill = AHS, group = AHS),
+    shape = 21,
+    stroke = .7,
+    col = "white",
+    size = 2
+  ) +
+  scale_colour_manual(name = expression(AHS[max]), values = col_ahs) +
+  scale_fill_manual(name = expression(AHS[max]), values = col_ahs) +
+  facet_grid(~genus) +
+  labs(y = expression("Relative cover (%)"), x = NULL) +
+  theme_andi() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    strip.text = element_text(face = "italic"),
+    legend.position = "bottom"
+  )
+plot_change_ahs_max
+
+
+ggsave(
+  filename = "plot_change_ahs_max.pdf",
+  plot = plot_change_ahs_max,
+  path = here("long_term/plots/"),
+  height = 15 * 0.8,
+  width = 25 * 0.8,
+  units = "cm"
+)
+```
+
+#### Summary table
+
+```{r}
+pred_ahs_maxS %>%
+  filter(year != 2019) %>%
+  mutate(
+    m_SI = paste0(
+      round(median, 0),
+      " [",
+      round(l_95, 0),
+      ", ",
+      round(u_95, 0),
+      "]"
+    )
+  ) %>%
+  select(year, AHS, genus, m_SI) %>%
+  pivot_wider(names_from = genus, values_from = m_SI) %>%
+  select(!year) %>%
+  htmlTable(rgroup = 2020:2023, n.rgroup = rep(3, 4), rnames = FALSE)
+```
+
+#### Impact marine_area
+
+```{r}
+new_data_marine_area <- dat_genus_delta %>%
+  dplyr::select(genus, f_year, marine_area) %>%
+  distinct() %>%
+  left_join(
+    dat_genus_delta %>%
+      select(marine_area, max_dhw) %>%
+      distinct(),
+    by = "marine_area"
+  )
+
+
+pred_marine_area <- epred_draws(
+  m_ccover_genus,
+  newdata = new_data_marine_area,
+  re_formula = NULL
+) %>% # include population random effect
+  ungroup() %>%
+  dplyr::select(.draw, marine_area, genus, f_year, .epred, max_dhw) %>%
+  pivot_wider(names_from = f_year, values_from = .epred) %>%
+  clean_names() %>%
+  mutate(
+    perc_2019 = 100 * (f2019 / 50),
+    perc_2020 = 100 * (f2020 / 50),
+    perc_2021 = 100 * (f2021 / 50),
+    perc_2022 = 100 * (f2022 / 50),
+    perc_2023 = 100 * (f2023 / 50)
+  ) %>%
+  mutate(
+    delta_2020 = 100 * perc_2020 / perc_2019,
+    delta_2021 = 100 * perc_2021 / perc_2019,
+    delta_2022 = 100 * perc_2022 / perc_2019,
+    delta_2023 = 100 * perc_2023 / perc_2019
+  ) %>%
+  ungroup() %>%
+  dplyr::select(
+    marine_area,
+    genus,
+    delta_2020,
+    delta_2021,
+    delta_2022,
+    delta_2023,
+    draw,
+    max_dhw
+  ) %>%
+  pivot_longer(
+    delta_2020:delta_2023,
+    names_to = "year",
+    values_to = "percent"
+  ) %>%
+  mutate(
+    year = substr(year, 7, 10) %>%
+      as.numeric()
+  )
+
+
+bin_ahs <- data.frame(
+  max_dhw = pred_marine_area$max_dhw %>%
+    unique() %>%
+    sort(),
+  bin = c(1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3)
+) %>%
+  group_by(bin) %>%
+  mutate(
+    min = round(min(max_dhw), 2),
+    max = round(max(max_dhw), 2),
+    gr_n = paste(min, max, sep = " - ")
+  ) %>%
+  ungroup() %>%
+  mutate(
+    cols = c(
+      "#E69F00",
+      "#56B4E9",
+      "#009E73",
+      "#999999",
+      "#CC79A7",
+      "#E69F00",
+      "#56B4E9",
+      "#009E73",
+      "#999999",
+      "#E69F00",
+      "#56B4E9",
+      "#009E73",
+      "#999999"
+    )
+  ) %>%
+  select(max_dhw, gr_n, cols)
+
+
+pred_marine_areaS <- pred_marine_area %>%
+  group_by(year, marine_area, genus, max_dhw) %>%
+  summarise(
+    median = median(percent),
+    l_89 = quantile(percent, probs = (1 - 0.89) / 2),
+    u_89 = quantile(percent, probs = 1 - (1 - 0.89) / 2),
+    l_95 = quantile(percent, 0.025, na.rm = T),
+    u_95 = quantile(percent, 0.975, na.rm = T),
+  ) %>%
+  mutate(
+    gr_ahs = cut(
+      max_dhw,
+      #  breaks = quantile(max_dhw, probs = seq(0, 1, length.out = 3)),
+      breaks = c(5.765000, 6.164286, 6.264714),
+      include.lowest = TRUE
+    )
+  ) %>%
+  left_join(bin_ahs, by = "max_dhw") %>%
+  mutate(
+    genus = fct_rev(genus),
+    gr_n = paste0("AHS[max] * ': ' * ", gr_n, " * ~degree * C ~ weeks"),
+    genus_orig = genus
+  )
+
+levels(pred_marine_areaS$genus) <- c(
+  "Pocillopora" = expression(italic("Pocillopora")),
+  "Montipora" = expression(italic("Montipora")),
+  "Acropora" = expression(italic("Acropora"))
+)
+
+
+# get colours
+cols_sites <- pred_marine_areaS %>%
+  ungroup() %>%
+  select(marine_area, cols) %>%
+  distinct() %>%
+  as.vector()
+
+cols_sites <- setNames(as.character(cols_sites$cols), cols_sites$marine_area)
+```
+
+```{r}
+datlab <- pred_marine_areaS %>%
+  filter(year == 2020)
+
+
+plot_change_marine_area <- pred_marine_areaS %>%
+  ggplot(aes(x = year, group = marine_area)) +
+  geom_hline(yintercept = 100, linetype = "11", colour = "grey") +
+  geom_errorbar(
+    aes(ymin = l_89, ymax = u_89, col = marine_area),
+    width = 0,
+    position = position_dodge(width = .3)
+  ) +
+  geom_line(
+    aes(y = median, colour = marine_area),
+    position = position_dodge(width = .3)
+  ) +
+  geom_point(
+    aes(y = median, colour = marine_area),
+    position = position_dodge(width = .3),
+    size = .8
+  ) +
+  geom_text_repel(
+    data = datlab,
+    aes(
+      color = marine_area,
+      label = marine_area,
+      y = median
+    ),
+    direction = "y",
+    hjust = "right",
+    size = 3,
+    force = 10,
+    segment.size = .5,
+    segment.alpha = .5,
+    segment.linetype = "11",
+    box.padding = .4,
+    segment.curvature = 0.4,
+    segment.ncp = 3,
+    segment.angle = 20,
+    position = position_dodgenudge_to(width = .3, x = 2018.4),
+  ) +
+  scale_x_continuous(breaks = seq(2020, 2023, by = 1), limits = c(2018.2, NA)) +
+  scale_colour_manual(values = cols_sites) +
+  labs(y = expression("Relative cover (%)"), x = NULL) +
+  facet_grid(genus ~ gr_n, labeller = label_parsed, scales = "free") +
+  theme_andi() +
+  theme(
+    legend.position = "none",
+    panel.background = element_rect(colour = "black", fill = 'transparent'),
+    strip.text.y = element_text(face = "italic")
+  )
+
+
+plot_change_marine_area
+
+ggsave(
+  filename = "plot_change_marine_area.pdf",
+  plot = plot_change_marine_area,
+  path = here("long_term/plots/"),
+  width = 28 * 0.8,
+  height = 25 * 0.8,
+  units = "cm"
+)
+```
+
+#### Table over all sites
+
+```{r}
+pred_marine_area %>%
+  filter(year != 2019) %>%
+  group_by(genus, year) %>%
+  summarise(
+    cover = median(percent),
+    l_95 = quantile(percent, 0.025, na.rm = T),
+    u_95 = quantile(percent, 0.975, na.rm = T)
+  ) %>%
+  mutate(
+    m_SI = paste0(
+      round(cover, 0),
+      " [",
+      round(l_95, 0),
+      ", ",
+      round(u_95, 0),
+      "]"
+    )
+  ) %>%
+  ungroup() %>%
+  select(genus, year, m_SI) %>%
+  pivot_wider(names_from = year, values_from = m_SI) %>%
+  htmlTable(
+    rnames = FALSE
+  )
+```
+
+#### Table for SI
+
+```{r}
+pred_marine_areaS %>%
+  filter(year != 2019) %>%
+  mutate(
+    m_SI = paste0(
+      round(median, 0),
+      " [",
+      round(l_95, 0),
+      ", ",
+      round(u_95, 0),
+      "]"
+    )
+  ) %>%
+  ungroup() %>%
+  mutate(genus_year = paste(genus_orig, year, sep = "_")) %>%
+  select(marine_area, genus_year, m_SI) %>%
+  pivot_wider(names_from = genus_year, values_from = m_SI) %>%
+  htmlTable(
+    cgroup = c("", 2020:2023),
+    n.cgroup = c(1, rep(3, 4)),
+    rnames = FALSE
+  )
+```
+
+## Model immediate mortality due to DHW in 2019
+
+### Model
+
+As above, this time only 2019 and 2020 data an dincluding year as interactive effect
+
+
+```{r}
+m_ccover_genus_19_dhw <- brm(
+  counts | trials(50) ~
+    max_dhw * genus * factor(year) + (1 + factor(year) | marine_area),
+  data = dat_genus_delta %>%
+    filter(year %in% 2019:2020),
+  family = binomial(),
+  iter = 4000,
+  warmup = 2000,
+  prior = c(
+    prior(normal(0, 10), class = b),
+    prior(normal(0, 10), class = Intercept)
+  ),
+  chains = 4,
+  cores = 4,
+  threads = threading(2, static = T),
+  seed = 123,
+  file = here("long_term/models/m_ccover_genus_19_dhw"),
+  backend = "cmdstanr"
+)
+```
+
+### Checks
+
+```{r}
+summary(m_ccover_genus_19_dhw) #no div trans
+pp_check(m_ccover_genus_19_dhw, ndraws = 100) #good
+bayes_R2(m_ccover_genus_19_dhw) #0.85
+
+r2_bayes(m_ccover_genus_19_dhw)
+# Conditional R2: 0.849 (95% CI [0.824, 0.871])
+# Marginal R2: 0.742 (95% CI [0.669, 0.793])
+```
+
+### Line plot
+
+Predict delta for each genus along sequence of max_DHW values
+
+```{r}
+new_data_dhw_gen <- expand_grid(
+  max_dhw = seq(
+    min(dat_genus_delta$max_dhw) - 0.1,
+    max(dat_genus_delta$max_dhw) + 0.1,
+    length = 100
+  ),
+  genus = unique(dat_genus_delta$genus),
+  year = 2019:2020
+)
+
+pred_dhw_gen <- epred_draws(
+  m_ccover_genus_19_dhw,
+  newdata = new_data_dhw_gen,
+  re_formula = NA
+) %>%
+  ungroup() %>%
+  dplyr::select(max_dhw, .draw, .epred, year, genus) %>%
+  pivot_wider(names_from = year, values_from = .epred) %>%
+  mutate(delta = (`2020` - `2019`) / `2019`)
+
+
+pred_dhw_genS <- pred_dhw_gen %>%
+  group_by(max_dhw, genus) %>%
+  summarise(
+    median = median(delta, na.rm = T),
+    l95 = quantile(delta, 0.025, na.rm = T),
+    u95 = quantile(delta, 0.975, na.rm = T),
+
+    l80 = quantile(delta, 0.1, na.rm = T),
+    u80 = quantile(delta, 0.9, na.rm = T),
+
+    l60 = quantile(delta, 0.2, na.rm = T),
+    u60 = quantile(delta, 0.8, na.rm = T)
+  ) %>%
+  ungroup()
+
+dat_genus_deltaS <- dat_genus_delta %>%
+  dplyr::select(marine_area, proportion, year, coast, max_dhw, genus) %>%
+  filter(year %in% c(2019:2020)) %>%
+  pivot_wider(names_from = year, values_from = proportion, values_fn = mean) %>%
+  mutate(delta = (`2020` - `2019`) / `2019`)
+
+
+plot_dhw <- pred_dhw_genS %>%
+  mutate(genus = fct_rev(genus)) %>%
+  ggplot(aes(x = max_dhw)) +
+  geom_hline(yintercept = 0, linetype = "11", col = "grey") +
+  geom_ribbon(
+    aes(ymin = l95 * 100, ymax = u95 * 100, fill = genus),
+    alpha = .3
+  ) +
+  geom_ribbon(
+    aes(ymin = l80 * 100, ymax = u80 * 100, fill = genus),
+    alpha = .3
+  ) +
+  geom_ribbon(
+    aes(ymin = l60 * 100, ymax = u60 * 100, fill = genus),
+    alpha = .3
+  ) +
+  geom_line(
+    aes(y = median * 100, col = genus),
+    linewidth = 1,
+    show.legend = F
+  ) +
+  geom_point(
+    data = dat_genus_deltaS,
+    aes(x = max_dhw, y = delta * 100, fill = genus),
+    size = 2.5,
+    shape = 21,
+    col = "white",
+    show.legend = F
+  ) +
+  scale_colour_manual(values = cols_genera, name = NULL) +
+  scale_fill_manual(values = cols_genera, name = NULL) +
+  facet_wrap(~genus, ncol = 1) +
+  labs(
+    y = expression(Delta ~ "Relative cover (%" ~ yr^-1 * ")"),
+    x = expression(AHS[max]),
+    tag = "A"
+  ) +
+  theme_andi() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.background = element_rect(colour = "black", fill = 'transparent'),
+    strip.text = element_text(face = "italic")
+  )
+
+plot_dhw
+```
+
+#### Mortality over all site
+
+For info within text
+
+```{r}
+pred_dhw_gen %>%
+  group_by(genus) %>%
+  summarise(
+    median = median(delta * 100, na.rm = T),
+    l_95 = quantile(delta * 100, 0.025, na.rm = T),
+    u_95 = quantile(delta * 100, 0.975, na.rm = T)
+  ) %>%
+  mutate_if(is.numeric, txtRound, 0) %>%
+  htmlTable(rnames = FALSE)
+```
+
+### Slope
+
+Assuming linear relationship over whole course of max_DHW calculate slope between lowest max_DHW value and highest. Calculate this slope for each genus
+
+```{r}
+slope_gen <- epred_draws(
+  m_ccover_genus_19_dhw,
+  re_formula = NA,
+  newdata = expand_grid(
+    max_dhw = c(min(dat_genus_delta$max_dhw), max(dat_genus_delta$max_dhw)),
+    year = 2019:2020,
+    genus = dat_genus_delta$genus %>% unique()
+  )
+) %>%
+  ungroup() %>%
+  dplyr::select(max_dhw, year, .epred, .draw, genus) %>%
+  pivot_wider(names_from = year, values_from = .epred) %>%
+  mutate(delta = (`2020` - `2019`) / `2019`) %>%
+  dplyr::select(delta, max_dhw, .draw, genus) %>%
+  pivot_wider(names_from = max_dhw, values_from = delta) %>%
+  mutate(
+    slope_val = (`6.26471428571429` - `5.765`) / (6.26471428571429 - 5.765)
+  ) %>%
+  mutate(
+    genus = fct_reorder(.f = genus, .x = slope_val, .fun = mean, .desc = T)
+  )
+```
+
+Calculate how proportion of distribution \> 0
+
+```{r}
+dat_above0 <- slope_gen %>%
+  group_by(genus) %>%
+  summarize(
+    above_0 = above_0(slope_val),
+    below_0 = 100 * round(1 - above_0, 4)
+  ) %>%
+  mutate(above_0 = paste0(round(above_0 * 100, 0), "%")) %>%
+  mutate(above_0 = ifelse(above_0 == "0%", "<1%", above_0))
+```
+
+### Plot slopes
+
+```{r}
+plot_slope_gen <- slope_gen %>%
+  ggplot(aes(y = genus, x = slope_val * 100)) +
+  stat_halfeye(aes(fill = genus), .width = c(0.8, 0.95), ) +
+  geom_vline(xintercept = 0, linetype = "11") +
+  geom_text(
+    data = dat_above0,
+    aes(x = 8, label = above_0),
+    hjust = 0,
+    vjust = -2
+  ) +
+  labs(
+    #   x = expression(Delta ~ "% Relative cover" ~ °C^-1 ~ "week"^-1),
+    x = expression(Delta ~ "% Relative cover" ~ degree * C^-1 ~ week^-1),
+    y = NULL,
+    tag = "B"
+  ) +
+  scale_fill_manual(values = cols_genera, name = NULL) +
+  coord_cartesian(xlim = c(-300, 200)) +
+  theme_andi() +
+  theme(legend.position = "none", axis.text.y = element_text(face = 'italic'))
+
+
+plot_slope_gen
+```
+
+Combine
+
+```{r}
+plot_slope_both_gen <- plot_dhw + plot_slope_gen + plot_layout(widths = c(2, 1))
+
+plot_slope_both_gen
+```
+
+```{r}
+ggsave(
+  filename = "plot_slope_both_gen.pdf",
+  plot = plot_slope_both_gen,
+  path = here("long_term/plots/"),
+  width = 22,
+  height = 16,
+  units = "cm"
+)
+```
+
+Get summary data (for info in text)
+
+```{r}
+slope_gen %>%
+  group_by(genus) %>%
+  summarise(
+    median = median(slope_val * 100, na.rm = T),
+    l_95 = quantile(slope_val * 100, 0.025, na.rm = T),
+    u_95 = quantile(slope_val * 100, 0.975, na.rm = T)
+  ) %>%
+  mutate_if(is.numeric, txtRound, 2) %>%
+  htmlTable(rnames = FALSE)
+```

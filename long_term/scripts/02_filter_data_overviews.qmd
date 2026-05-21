@@ -1,0 +1,361 @@
+---
+title: "Checks n numbers"
+format: html
+---
+
+## Get data
+
+```{r}
+dat <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds"))
+dat_meta <- read.csv(here("long_term/data/clean/moorea_mpa_site_metadata.csv"))
+```
+
+- Filter to only coral, outer slope, after 2018
+
+```{r}
+dat_c <- dat %>%
+  filter(benthic_group == "coral", habitat == "Outer slope", year > 2018)
+```
+
+
+Select 3 main genera
+
+```{r}
+top_3_corals <- c("Pocillopora", "Montipora", "Acropora")
+```
+
+bin other genera into "others", re-calculate cover
+
+```{r}
+dat_c <- dat_c %>%
+  left_join(dat_meta, by = "marine_area") %>%
+  mutate(genus = ifelse(substrate %in% top_3_corals, substrate, "Other")) %>%
+  dplyr::select(-substrate) %>%
+  group_by(across(c(-proportion))) %>%
+  summarise(proportion = sum(proportion, na.rm = T)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = genus, values_from = proportion, values_fill = 0) %>%
+  dplyr::select(-benthic_group, -habitat) %>%
+  pivot_longer(
+    cols = 10:ncol(.),
+    names_to = "genus",
+    values_to = "proportion"
+  ) %>%
+  mutate(genus = fct_relevel(genus, "Other", after = Inf)) #set others to end
+```
+
+Get DHW data at to data. Names of sites differ and needs to be aligned
+
+```{r}
+dat_genus_delta <- dat_c
+
+dat_dhw <- read.csv(here("dhw/data/dat_sites_maxdhw_mur.csv"))
+
+
+# rename dat_coral_delta sites
+
+dat_genus_delta <- dat_genus_delta %>%
+  mutate(
+    marine_area = case_when(
+      marine_area == "Haapiti" ~ "Ha'apiti",
+      marine_area == "Maatea" ~ "Ma'atea",
+      marine_area == "Pihaena" ~ "Piha'ena",
+      marine_area == "Temae" ~ "Tema'e",
+      .default = marine_area
+    )
+  )
+
+dat_dhw <- dat_dhw %>%
+  mutate(site = ifelse(site == "Entre 2 baies", "Entre 2 baies", site))
+
+dat_genus_delta <- dat_genus_delta %>%
+  dplyr::select(-coast) %>%
+  left_join(dat_dhw, by = c("marine_area" = "site"))
+```
+
+Check always 3 reps
+
+```{r}
+dat_c %>%
+  group_by(marine_area, year, genus) %>%
+  summarise(n = n()) %>%
+  filter(n != 3)
+#all good
+```
+
+
+- 25 m every 50 cm per transect =\> 50 points
+- remove "Other", mix of genera, no common response expected
+
+```{r}
+dat_genus_delta <- dat_genus_delta %>%
+  mutate(counts = as.integer(proportion * 50)) %>%
+  filter(genus != "Other") %>%
+  droplevels()
+
+#ensure year is factor
+dat_genus_delta <- dat_genus_delta %>%
+  mutate(
+    f_year = paste0("f", year) %>%
+      factor()
+  )
+```
+
+## Overviews for in-text numbers & examples
+
+Cover in 2019
+
+Mean cover in 2019
+
+```{r}
+dat_c %>%
+  group_by(year, marine_area, substrate) %>%
+  summarise(proportion = mean(proportion)) %>% #mean coral cover per site
+  group_by(year, substrate) %>%
+  summarise(
+    proportion = mean(proportion) %>%
+      round(2)
+  ) %>%
+  pivot_wider(names_from = year, values_from = proportion) %>%
+  janitor::clean_names() %>%
+  arrange(-x2019)
+```
+
+
+```{r}
+dat_genus_delta %>%
+  #filter(year == 2019) %>%
+  group_by(year, genus) %>%
+  mutate(perc = 100 * counts / 50) %>%
+  summarise(
+    mean = mean(perc),
+    sd = sd(perc),
+    n = n(),
+    se = round(sd / sqrt(n), 2)
+  ) %>%
+  arrange(desc(mean)) %>%
+  mutate(across(where(is.numeric), round, 1))
+```
+
+Extract points per year
+
+```{r}
+#Acropora
+dat_genus_delta %>%
+  filter(genus == "Acropora") %>%
+  group_by(year) %>%
+  summarise(suM_points = sum(counts), mean_points = mean(counts))
+
+#Montipora
+dat_genus_delta %>%
+  filter(genus == "Montipora") %>%
+  group_by(year) %>%
+  summarise(suM_points = sum(counts), mean_points = mean(counts))
+
+# Total points
+dat_genus_delta %>%
+  select(year, marine_area, transect) %>%
+  distinct() %>%
+  group_by(year) %>%
+  summarise(n = n()) %>%
+  mutate(points_tot = n * 50)
+```
+
+Check Taotaha Montipora
+
+```{r}
+#points
+dat_genus_delta %>%
+  filter(marine_area == "Taotaha", genus == "Montipora") %>%
+  select(year, marine_area, transect) %>%
+  distinct() %>%
+  group_by(year) %>%
+  summarise(n = n()) %>%
+  mutate(points_tot = n * 50) # 150 (3 transect with 50 points)
+
+dat_genus_delta %>%
+  filter(marine_area == "Taotaha", genus == "Montipora") %>%
+  group_by(year) %>%
+  summarise(sum_points = sum(counts), mean_points = mean(counts))
+```
+
+Over all sites, for 2019 & 2020
+
+```{r}
+dat_c %>%
+  group_by(genus, year) %>%
+  summarise(
+    mean_cover = mean(proportion * 100),
+    sd = sd(proportion * 100),
+    n = n(),
+    se = round(sd / sqrt(n), 2)
+  ) %>%
+  mutate(mean_cover = round(mean_cover, 2), se = round(se, 2)) %>%
+  dplyr::select(genus, year, mean_cover, se)
+```
+
+At Taotaha
+
+```{r}
+dat_c %>%
+  filter(marine_area == "Taotaha") %>%
+  group_by(genus, year) %>%
+  summarise(
+    mean_cover = mean(proportion * 100),
+    sd = sd(proportion * 100),
+    n = n(),
+    se = round(sd / sqrt(n), 2)
+  ) %>%
+  mutate(mean_cover = round(mean_cover, 2), se = round(se, 2)) %>%
+  select(genus, year, mean_cover, se)
+```
+
+Points and percent
+
+```{r}
+dat_c %>%
+  mutate(points_coral = proportion * 50, points_total = 50) %>%
+  group_by(genus, year) %>%
+  summarise(
+    points_coral = sum(points_coral),
+    points_total = sum(points_total),
+    percent = round(100 * points_coral / points_total, 1)
+  )
+```
+
+Taotaha Montipora
+
+```{r}
+dat_c %>%
+  filter(marine_area == "Taotaha", genus == "Montipora") %>%
+  mutate(points_coral = proportion * 50, points_total = 50) %>%
+  group_by(year) %>%
+  summarise(
+    points_coral = sum(points_coral),
+    points_total = sum(points_total),
+    percent = round(100 * points_coral / points_total, 1)
+  )
+```
+
+## Model Delta
+
+### Get data
+
+
+
+
+
+
+
+## Plot Cover
+
+Get data
+
+```{r}
+#take original data
+dat_allgenera <- dat %>%
+  left_join(dat_meta, by = "marine_area") %>%
+  filter(benthic_group %in% c("coral", "macro_alga"), habitat == "Outer slope")
+
+top_5_corals <- dat_allgenera %>%
+  filter(benthic_group == "coral") %>%
+  group_by(year, marine_area, substrate) %>%
+  summarise(proportion = mean(proportion)) %>% #mean coral cover per site
+  group_by(substrate) %>%
+  summarise(
+    proportion = mean(proportion) %>%
+      round(2)
+  ) %>%
+  arrange(desc(proportion)) %>%
+  slice(1:5) %>%
+  pull(substrate)
+
+
+dat_allgenera <- dat_allgenera %>%
+  mutate(
+    genus = ifelse(benthic_group == "macro_alga", "Macroalgae", substrate)
+  ) %>%
+  mutate(
+    genus = ifelse(
+      genus %in% c(top_5_corals, "Macroalgae"),
+      genus,
+      "Other Corals"
+    )
+  ) %>%
+  dplyr::select(-substrate) %>%
+  group_by(across(c(-proportion))) %>%
+  summarise(proportion = sum(proportion, na.rm = T)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = genus, values_from = proportion, values_fill = 0) %>%
+  dplyr::select(-benthic_group, -habitat) %>%
+  pivot_longer(
+    cols = 10:ncol(.),
+    names_to = "genus",
+    values_to = "proportion"
+  ) %>%
+  mutate(genus = fct_relevel(genus, "Other Corals", after = Inf)) %>% #set others to  last
+  mutate(genus = fct_relevel(genus, "Macroalgae", after = 0L)) #set Macroalgae to first
+
+
+# adapt site names
+dat_allgenera <- dat_allgenera %>%
+  mutate(
+    marine_area = case_when(
+      marine_area == "Entre 2 baies" ~ "Entre deux baies",
+      marine_area == "Haapiti" ~ "Ha'apiti",
+      marine_area == "Maatea" ~ "Ma'atea",
+      marine_area == "Pihaena" ~ "Piha'ena",
+      marine_area == "Temae" ~ "Tema'e",
+      .default = marine_area
+    )
+  )
+```
+
+```{r}
+brewer.pal(11, "Set3")[7]
+
+
+cols_allgenera <- c(
+  cols_genera[1:3],
+  "Other Corals" = "grey70",
+  "Porites" = brewer.pal(11, "Set3")[7],
+  "Astrea" = brewer.pal(11, "Set3")[8],
+  "Macroalgae" = "darkgreen"
+)
+
+
+plot_coral_cover <- dat_allgenera %>%
+  group_by(marine_area, year, coast, genus) %>%
+  summarise(cover_perc = mean(proportion * 100, na.rm = T)) %>%
+  ungroup() %>%
+  mutate(coast = factor(coast, levels = c("West", "North", "East"))) %>%
+  ggplot() +
+
+  geom_area(aes(fill = genus, x = year, y = cover_perc)) +
+
+  labs(x = "Year", y = "Benthic cover (%)") +
+  scale_fill_manual(values = cols_allgenera) +
+  guides(fill = guide_legend(title = "Genus")) +
+
+  facet_ragged_cols(vars(marine_area), vars(coast)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.ticks = element_line(colour = "black", size = 0.2),
+    panel.border = element_rect(fill = NA)
+  )
+plot_coral_cover
+```
+
+```{r}
+ggsave(
+  filename = "SI_coralgenera_cover.pdf",
+  plot = plot_coral_cover,
+  path = here("long_term/plots/"),
+  width = 20,
+  height = 15,
+  units = "cm"
+)
+```
