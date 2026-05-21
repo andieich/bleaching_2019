@@ -1,0 +1,34 @@
+---
+title: "Untitled"
+format: html
+---
+
+
+```{r}
+library(here)
+library(janitor)
+library(tidyverse)
+```
+
+
+```{r}
+dat_mana <- read.csv(here("long_term/data/raw/polynesia_mana.csv")) %>%
+  clean_names() %>%
+  filter(
+    date >= as.Date("2016-01-01"),
+    date <= as.Date("2023-12-31"),
+    site %in% c("e2b", "haapiti")
+  ) %>%
+  select(year = annee, site, n_quadrat, genus = genre, cover = recouvrement) %>%
+  group_by(year, site, genus) %>%
+  summarise(mean_cover = mean(cover))
+```
+
+Average benthic cover
+
+```{r}
+dat_mana %>%
+  group_by(genus) %>%
+  summarise(mean_cover_g = mean(mean_cover)) %>%
+  arrange(desc(mean_cover_g))
+```

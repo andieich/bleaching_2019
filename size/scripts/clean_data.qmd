@@ -422,26 +422,6 @@ data_E2B <- data_E2B %>%
   filter(area > 0)
 ```
 
-```{r}
-ddd <- function(spec_1, spec_2, spec_3, spec_4){
-  spec <- spec_1
-  
-  if(is.na(spec)){
-    spec <- spec_2
-  }
-  
-  if(is.na(spec)){
-    spec <- spec_3
-  }
-  
-  if(is.na(spec)){
-    spec <- spec_4
-  }
-  
-  return(spec)
-}
-```
-
 ### Haapiti
 
 #### Read and set up data

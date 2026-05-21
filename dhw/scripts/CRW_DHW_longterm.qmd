@@ -1,0 +1,172 @@
+---
+title: "Donwnlaod and plot longterm DHW data"
+format: html
+---
+
+
+
+```{r}
+library(here) #for project folder structure
+library(tidyverse)
+library(ggrepel)
+source(here("dhw/scripts/Andi_DHW_functions.R"))
+
+
+theme_custom <- function() {
+  theme_minimal() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.ticks = element_line(colour = "black", size = 0.2),
+      panel.border = element_rect(fill = NA)
+    )
+}
+```
+
+
+Set up box
+
+```{r}
+moorea_lat = -17.536273
+moorea_lon = -149.832730
+moorea_box = bounding_box(moorea_lat, moorea_lon, 15, 15)
+```
+
+
+Download NOAA CRW DHW data
+
+```{r}
+# download_all(
+#   lat1 = moorea_box$lat_min,
+#   lat2 = moorea_box$lat_max,
+#   lon1 = moorea_box$lon_min,
+#   lon2 = moorea_box$lon_max,
+#   day1 = as.Date("2016-01-01"),
+#   day2 = "2023-12-31",
+#   parameter = "CRW_DHW",
+#   folder = here("dhw/data/crw_dhw")
+# )
+```
+
+Read data
+
+
+```{r}
+dat_dhw_lt <- read_nc(
+  here("dhw/data/crw_dhw"),
+  varname = "CRW_DHW",
+  values_to = "dhw"
+)
+```
+
+Summarise over lat lon values
+
+
+```{r}
+dat_dhw_lt_S <- dat_dhw_lt %>%
+  filter(date < as_date("2023-04-01")) %>%
+  group_by(date) %>%
+  summarise(
+    mean_dhw = mean(dhw, na.rm = T),
+    min_dhw = min(dhw, na.rm = T),
+    max_dhw = max(dhw, na.rm = T)
+  )
+```
+
+
+Read benthic transect data to get dates of surveys
+
+```{r}
+dat_benthic <- readRDS(here("long_term/data/clean/clean_MooreaMPA.rds")) %>%
+  filter(
+    date >= as.Date("2019-01-01"),
+    date <= as.Date("2023-12-31"),
+    habitat == "Outer slope"
+  ) %>%
+  dplyr::select(date, year) %>%
+  distinct() %>%
+  mutate(date = as_date(date), year = as.integer(year)) %>%
+  group_by(year) %>%
+  summarise(min_date = min(date), max_date = max(date))
+```
+
+Read Polynesia Mana dada to assess dates
+
+```{r}
+dat_mana <- read.csv(here("long_term/data/raw/polynesia_mana.csv")) %>%
+  filter(
+    date >= as.Date("2016-01-01"),
+    date <= as.Date("2023-12-31"),
+    site %in% c("e2b", "haapiti")
+  ) %>%
+  dplyr::select(date, site) %>%
+  distinct() %>%
+  mutate(date = as_date(date), site_short = substr(site, 1, 1) %>% toupper())
+```
+
+
+Plot
+```{r}
+plot_overview_a <- dat_dhw_lt_S %>%
+  ggplot() +
+  geom_vline(data = dat_mana, aes(xintercept = date), col = "darkgreen") +
+  geom_rect(
+    data = dat_benthic,
+    aes(xmin = min_date, xmax = max_date, ymin = -Inf, ymax = Inf),
+    fill = "lightblue"
+  ) +
+  geom_line(aes(y = mean_dhw, x = date), col = "darkred") +
+  geom_text_repel(
+    data = dat_mana,
+    aes(x = date, y = -Inf, label = site_short),
+    col = "darkgreen"
+  ) +
+  labs(y = expression(DHW), x = "Year") +
+  scale_y_continuous(expand = expansion(mult = c(.3, .1))) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  theme_custom()
+plot_overview_a
+
+plot_overview <- dat_dhw_lt_S %>%
+  ggplot() +
+  geom_line(aes(y = mean_dhw, x = date), col = "darkred") +
+  labs(y = expression(DHW), x = "Year") +
+  scale_y_continuous(expand = expansion(mult = c(.3, .1))) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  theme_custom()
+plot_overview
+```
+
+
+```{r}
+ggsave(
+  filename = "plot_dhw_sampling_annotated.pdf",
+  plot = plot_overview_a,
+  path = here("dhw/plots/"),
+  width = 15,
+  height = 8,
+  units = "cm"
+)
+
+ggsave(
+  filename = "plot_dhw_sampling.pdf",
+  plot = plot_overview,
+  path = here("dhw/plots/"),
+  width = 15,
+  height = 8,
+  units = "cm"
+)
+```
+
+Heat wave 2019
+
+
+```{r}
+dat_dhw_lt_S %>%
+  filter(
+    date >= as_date("2019-01-01"),
+    date <= as_date("2019-12-31"),
+    mean_dhw > 0
+  ) %>%
+  view()
+```

@@ -24,19 +24,21 @@ library(htmlTable)
 
 ```{r}
 # theme for ggplot
-theme_andi <- function(){
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        strip.background = element_blank(),
-        axis.line = element_line(colour = "black" ))
+theme_andi <- function() {
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    strip.background = element_blank(),
+    axis.line = element_line(colour = "black")
+  )
 }
 
 #Function to predict & plot model data
 
 #define colours
-  
-cols_state <-  c(
+
+cols_state <- c(
   "complete mortality" = "#D55E00",
   "growth" = "#009E73",
   "partial mortality" = "#E69F00",
@@ -46,51 +48,55 @@ cols_state <-  c(
 x_seq <- log(c(0, 2, 10, 50, 250, 1000) + 1)
 x_seq_trans <- round(exp(x_seq) - 1, 0)
 
-plot_model <- function(data, model, title = "", sep_by_site = T){
-  
-  
-  
+plot_model <- function(data, model, title = "", sep_by_site = T) {
   # To plot raw data as ticks, dummy code states (one column per state, 0/1 for true false), => pivor longer to have one column for state and one for true/false, => select only true (=1)
-  dat_dummy <-  data %>% 
-  dplyr::select(spec_1, log_area, state) %>% 
-  mutate(state = recode(state,
-                            "died" = "complete mortality",
-                            "grew" = "growth",
-                            "shrunk" = "partial mortality")) %>% 
-  fastDummies::dummy_cols(select_columns = "state", remove_selected_columns = T) %>% 
-  pivot_longer(3:6, 
-               names_to = "state", 
-               values_to = "dummy") %>% 
-  mutate(state = gsub("state_","",state)) %>% 
-  filter(dummy != 0) %>% 
-    mutate(area = exp(log_area)-1)
-  
-#predict data with model along sequence of area
-  
-  dat_pred <- model %>% 
-      epred_draws(newdata = expand_grid(
-        log_area = seq(0, 7.3, length = 200),
-        site = unique(data$site)), 
-        re_formula = NA)
-  
-  if (sep_by_site){
-#summarise predictions
-dat_predS <- dat_pred %>% 
-  group_by(log_area, site, .category) %>% 
-  summarise(median = median(.epred, na.rm = T),
-            l95 = quantile(.epred, 0.025, na.rm = T),
-            u95 = quantile(.epred, 0.975, na.rm = T),
-            
-            l90 = quantile(.epred, 0.05, na.rm = T),
-            u90 = quantile(.epred, 0.95, na.rm = T),
-            
-            l80 = quantile(.epred, 0.1, na.rm = T),
-            u80 = quantile(.epred, 0.9, na.rm = T),
-            
-            ) %>% 
-  ungroup() %>% 
-    mutate(area = exp(log_area)-1)
+  dat_dummy <- data %>%
+    dplyr::select(spec_1, log_area, state) %>%
+    mutate(
+      state = recode(
+        state,
+        "died" = "complete mortality",
+        "grew" = "growth",
+        "shrunk" = "partial mortality"
+      )
+    ) %>%
+    fastDummies::dummy_cols(
+      select_columns = "state",
+      remove_selected_columns = T
+    ) %>%
+    pivot_longer(3:6, names_to = "state", values_to = "dummy") %>%
+    mutate(state = gsub("state_", "", state)) %>%
+    filter(dummy != 0) %>%
+    mutate(area = exp(log_area) - 1)
 
+  #predict data with model along sequence of area
+
+  dat_pred <- model %>%
+    epred_draws(
+      newdata = expand_grid(
+        log_area = seq(0, 7.3, length = 200),
+        site = unique(data$site)
+      ),
+      re_formula = NA
+    )
+
+  if (sep_by_site) {
+    #summarise predictions
+    dat_predS <- dat_pred %>%
+      group_by(log_area, site, .category) %>%
+      summarise(
+        median = median(.epred, na.rm = T),
+        l95 = quantile(.epred, 0.025, na.rm = T),
+        u95 = quantile(.epred, 0.975, na.rm = T),
+
+        l90 = quantile(.epred, 0.05, na.rm = T),
+        u90 = quantile(.epred, 0.95, na.rm = T),
+
+        l80 = quantile(.epred, 0.1, na.rm = T),
+        u80 = quantile(.epred, 0.9, na.rm = T),
+      ) %>%
+      ungroup() %>%
+      mutate(area = exp(log_area) - 1)
   } else {
     #summarise predictions
     dat_predS <- dat_pred %>%
@@ -99,63 +105,104 @@ dat_predS <- dat_pred %>%
         median = median(.epred, na.rm = T),
         l95 = quantile(.epred, 0.025, na.rm = T),
         u95 = quantile(.epred, 0.975, na.rm = T),
-        
+
         l90 = quantile(.epred, 0.05, na.rm = T),
         u90 = quantile(.epred, 0.95, na.rm = T),
-        
+
         l80 = quantile(.epred, 0.1, na.rm = T),
         u80 = quantile(.epred, 0.9, na.rm = T),
-        
       ) %>%
       ungroup() %>%
       mutate(area = exp(log_area) - 1)
   }
 
+  #and plot
+  plot <- dat_predS %>%
+    mutate(
+      .category = recode(
+        .category,
+        "died" = "complete mortality",
+        "grew" = "growth",
+        "shrunk" = "partial mortality"
+      )
+    ) %>%
+    ggplot(aes(x = log_area)) +
+    geom_hline(yintercept = 0.5, linetype = "11", colour = "grey") +
+    geom_ribbon(
+      aes(x = log_area, ymin = l95, ymax = u95, fill = .category),
+      alpha = .2
+    ) +
+    geom_ribbon(
+      aes(x = log_area, ymin = l90, ymax = u90, fill = .category),
+      alpha = .2
+    ) +
+    geom_ribbon(
+      aes(x = log_area, ymin = l80, ymax = u80, fill = .category),
+      alpha = .2
+    ) +
+    geom_line(aes(y = median, col = .category)) +
+    geom_point(
+      data = dat_dummy,
+      aes(y = dummy + 0.05, col = state),
+      shape = "|",
+      stroke = 0.1,
+      alpha = 0.5,
+      position = position_dodgev(height = 0.11)
+    ) +
+    scale_colour_manual(values = cols_state, name = NULL) +
+    scale_fill_manual(values = cols_state, name = NULL) +
+    scale_y_continuous(name = "Probability", breaks = seq(0, 1, 0.2)) +
+    scale_x_continuous(breaks = x_seq, labels = x_seq_trans) +
+    labs(
+      y = "Probability",
+      x = expression("Colony area" ~ cm^2),
+      title = title
+    ) +
+    theme_andi() +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(face = "bold", hjust = 0.5)
+    ) #
 
+  if (sep_by_site) {
+    plot <- plot +
+      facet_wrap2(~site, axes = "all")
+  }
 
+  print(plot)
 
-#and plot
-plot <- dat_predS %>%
-  mutate(.category = recode(.category,
-                            "died" = "complete mortality",
-                            "grew" = "growth",
-                            "shrunk" = "partial mortality")) %>% 
-  ggplot(aes(x = log_area))+
-  geom_vline(xintercept = log(10+1), linetype = "11", colour = "grey")+
-  geom_ribbon(aes(x = log_area, ymin = l95, ymax = u95, fill = .category), alpha = .2)+
-  geom_ribbon(aes(x = log_area, ymin = l90, ymax = u90, fill = .category), alpha = .2)+
-  geom_ribbon(aes(x = log_area, ymin = l80, ymax = u80, fill = .category), alpha = .2)+
-  geom_line(aes(y = median, col = .category))+
-  geom_point(data = dat_dummy, 
-             aes(y = dummy + 0.05, 
-                 col = state), 
-             shape = "|", 
-             stroke = 0.1,
-             alpha = 0.5,
-             position = position_dodgev(height = 0.11))+
-  scale_colour_manual(values = cols_state, name = NULL)+
-  scale_fill_manual(values = cols_state, name = NULL)+
-  scale_y_continuous(name="Probability", breaks =seq(0, 1, 0.2))+
-  scale_x_continuous(breaks = x_seq, 
-                     labels = x_seq_trans)+
-  labs(y = "Probability", x = expression("Colony area"~cm^2),
-       title = title)+
-  theme_andi()+
-  theme(legend.position = "bottom",
-        plot.title = element_text(face = "bold", hjust = 0.5))#
+  exp <- list("plot" = plot, "data" = dat_predS, "data_raw" = dat_pred)
 
+  return(exp)
+}
 
-if (sep_by_site){
-  plot <- plot+
-    facet_wrap2(~site, axes = "all") 
-} 
+add_annotation <- function(x_val, col){
+  x_pos <- log(x_val + 1)
 
-print(plot)
-
-exp <- list("plot" = plot, "data" = dat_predS, "data_raw" = dat_pred)
-
-return(exp)
-
+  list(
+    geom_point(
+      x = x_pos, y = .5,
+      size = .4,
+      color = col,
+      inherit.aes = FALSE
+    ),
+    geom_segment(
+      x = x_pos, xend = x_pos,
+      y = .5, yend = .5 + .2,
+      linewidth = .2,
+      color = col,
+      inherit.aes = FALSE
+    ),
+    annotate(
+      "text",
+      x = x_pos,
+      y = .5 + .2,
+      label = x_val,
+      color = col,
+      hjust = 0.5,
+      vjust = -0.15
+    )
+  )
 }
 ```
 
@@ -166,14 +213,14 @@ return(exp)
 Use log(1 + area) not log to keep values positive
 
 ```{r}
-dat_state <- read.csv(here("size/data/dat_state.csv")) %>% 
-  filter(state != "born") %>% 
-  mutate(log_area = log(1+area_1)) %>% 
-  mutate(site = recode(site, 
-                       "HAA" = "Ha'apiti",
-                       "E2B" = "Entre deux baies")) %>% 
-  separate(genet_ID, into = c("site2", "quadrat", "rep")) %>% 
-  mutate(site_quadrat = paste(site, quadrat, sep = "_")) %>% 
+dat_state <- read.csv(here("size/data/dat_state.csv")) %>%
+  filter(state != "born") %>%
+  mutate(log_area = log(1 + area_1)) %>%
+  mutate(
+    site = recode(site, "HAA" = "Ha'apiti", "E2B" = "Entre deux baies")
+  ) %>%
+  separate(genet_ID, into = c("site2", "quadrat", "rep")) %>%
+  mutate(site_quadrat = paste(site, quadrat, sep = "_")) %>%
   dplyr::select(-site2)
 ```
 
@@ -182,20 +229,21 @@ dat_state <- read.csv(here("size/data/dat_state.csv")) %>%
 ### 2016-2018
 
 ```{r}
-m_state_16_18 <- brm(state ~  s(log_area, by = site) + (1|site_quadrat), 
-                     data = dat_state %>% 
-                       filter(comparison == "2016_2018"),
-          family = categorical(link = "logit", refcat = NULL),
-          iter = 4000,
-          warmup = 2000,
-           file = here("size/models/m_state_16_18"),
-          chains = 4,
-          cores = 4,
-          seed = 123,
-          threads = threading(2, static = T),
-          control = list(adapt_delta = 0.99, 
-                         max_treedepth = 20),
-          backend = "cmdstanr")
+m_state_16_18 <- brm(
+  state ~ s(log_area, by = site) + (1 | site_quadrat),
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  family = categorical(link = "logit", refcat = NULL),
+  iter = 4000,
+  warmup = 2000,
+  file = here("size/models/m_state_16_18"),
+  chains = 4,
+  cores = 4,
+  seed = 123,
+  threads = threading(2, static = T),
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  backend = "cmdstanr"
+)
 
 summary(m_state_16_18)
 #plot(m_state_16_18)
@@ -206,20 +254,21 @@ pp_check(m_state_16_18, ndraws = 100)
 ### 2018 -2020
 
 ```{r}
-m_state_18_20 <- brm(state ~  s(log_area, by = site) + (1|site_quadrat), 
-                     data = dat_state %>% 
-                       filter(comparison == "2018_2020"),
-          family = categorical(link = "logit", refcat = NULL),
-          iter = 4000,
-          warmup = 2000,
-          file = here("size/models/m_state_18_20"),
-          chains = 4,
-          cores = 4,
-          seed = 123,
-          threads = threading(2, static = T),
-          control = list(adapt_delta = 0.99, 
-                         max_treedepth = 20),
-          backend = "cmdstanr")
+m_state_18_20 <- brm(
+  state ~ s(log_area, by = site) + (1 | site_quadrat),
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  family = categorical(link = "logit", refcat = NULL),
+  iter = 4000,
+  warmup = 2000,
+  file = here("size/models/m_state_18_20"),
+  chains = 4,
+  cores = 4,
+  seed = 123,
+  threads = threading(2, static = T),
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  backend = "cmdstanr"
+)
 
 
 summary(m_state_18_20)
@@ -230,20 +279,21 @@ pp_check(m_state_18_20, ndraws = 100)
 ### 2020-2022
 
 ```{r}
-m_state_20_22 <- brm(state ~  s(log_area, by = site) + (1|site_quadrat), 
-                     data = dat_state %>% 
-                       filter(comparison == "2020_2022"),
-          family = categorical(link = "logit", refcat = NULL),
-          iter = 4000,
-          warmup = 2000,
-          file = here("size/models/m_state_20_22"),
-          chains = 4,
-          cores = 4,
-          threads = threading(2, static = T),
-          seed = 123,
-          control = list(adapt_delta = 0.99, 
-                               max_treedepth = 20),
-          backend = "cmdstanr")
+m_state_20_22 <- brm(
+  state ~ s(log_area, by = site) + (1 | site_quadrat),
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  family = categorical(link = "logit", refcat = NULL),
+  iter = 4000,
+  warmup = 2000,
+  file = here("size/models/m_state_20_22"),
+  chains = 4,
+  cores = 4,
+  threads = threading(2, static = T),
+  seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  backend = "cmdstanr"
+)
 
 
 summary(m_state_20_22)
@@ -257,191 +307,316 @@ pp_check(m_state_20_22, ndraws = 100)
 Predict and plot data
 
 ```{r}
-plot_states_before <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2016_2018"), 
-           model = m_state_16_18,
-           title = "2016 - 2018")$plot +
+plot_states_before <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  title = "2016 - 2018"
+)$plot +
   theme(legend.position = "none")
 
-plot_states_during <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2018_2020"), 
-           model = m_state_18_20, 
-           title = "2018 - 2020")$plot +
+plot_states_during <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  title = "2018 - 2020"
+)$plot +
   theme(legend.position = "none")
 
 
-plot_states_after <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2020_2022"), 
-           model = m_state_20_22, 
-           title = "2020 - 2022")$plot
+plot_states_after <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  title = "2020 - 2022"
+)$plot
 
 ```
 
 ```{r}
-plot_states_after <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2020_2022"), 
-           model = m_state_20_22, 
-           title = "2020 - 2022")$plot
+plot_states_after <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  title = "2020 - 2022"
+)$plot
 
 ```
 
 Combine plots
 
 ```{r}
-plot_states = plot_states_before/plot_states_during/plot_states_after
+plot_states = plot_states_before / plot_states_during / plot_states_after
 plot_states
 ```
 
 Save plots
 
 ```{r}
-ggsave(filename = "SI_plot_states_sites.pdf",
-       plot = plot_states, 
-       path = here("size/plots"),
-       width = 30, height = 30, units = "cm")
+ggsave(
+  filename = "SI_plot_states_sites.pdf",
+  plot = plot_states,
+  path = here("size/plots"),
+  width = 30,
+  height = 30,
+  units = "cm"
+)
 ```
 
 ## Plot No sites
 
 ```{r}
-plot_states_before_ns <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2016_2018"), 
-           model = m_state_16_18, sep_by_site = F,
-           title = "2016 - 2018")$plot +
-  labs(tag = "A")+
+plot_states_before_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  sep_by_site = F,
+  title = "2016 - 2018"
+)$plot +
+  labs(tag = "A") +
   theme(legend.position = "none")
 
-plot_states_during_ns <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2018_2020"), 
-           model = m_state_18_20, sep_by_site = F,
-           title = "2018 - 2020")$plot +
-    labs(tag = "B")+
+
+plot_states_before_ns <- plot_states_before_ns + 
+      add_annotation(x_val = 10, col = cols_state["growth"]) +
+      add_annotation(x_val = 8, col = cols_state["complete mortality"])
+
+plot_states_during_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  sep_by_site = F,
+  title = "2018 - 2020"
+)$plot +
+  labs(tag = "B") +
   theme(legend.position = "none")
 
-plot_states_after_ns <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2020_2022"), 
-           model = m_state_20_22, sep_by_site = F,
-           title = "2020 - 2022")$plot+
+
+
+plot_states_during_ns <- plot_states_during_ns + 
+      add_annotation(x_val = 41, col = cols_state["complete mortality"]) + 
+      add_annotation(x_val = 294, col = cols_state["partial mortality"])
+
+
+
+plot_states_after_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  sep_by_site = F,
+  title = "2020 - 2022"
+)$plot +
   labs(tag = "C")
 
-plot_states_ns = plot_states_before_ns/plot_states_during_ns/plot_states_after_ns
+
+
+
+
+plot_states_after_ns <- plot_states_after_ns + 
+      add_annotation(x_val = 130, col = cols_state["complete mortality"]) + 
+      add_annotation(x_val = 211, col = cols_state["partial mortality"])
+
+plot_states_ns = plot_states_before_ns /
+  plot_states_during_ns /
+  plot_states_after_ns
 plot_states_ns
 ```
 
 ```{r}
-ggsave(filename = "plot_states_ns.pdf",
-       plot = plot_states_ns, 
-       path = here("size/plots"),
-       width = 18, height = 30, units = "cm")
+ggsave(
+  filename = "plot_states_ns.pdf",
+  plot = plot_states_ns,
+  path = here("size/plots"),
+  width = 18,
+  height = 30,
+  units = "cm"
+)
 ```
 
 Median sizes for 50% mortality
 
 ```{r}
-pred_states_before <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2016_2018"), 
-           model = m_state_16_18, 
-           title = "2016 - 2018")$data %>% 
+pred_states_before <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  title = "2016 - 2018"
+)$data %>%
   mutate(comparison = "before")
 
-pred_states_during <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2018_2020"), 
-           model = m_state_18_20, 
-           title = "2018 - 2020")$data %>% 
+pred_states_during <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  title = "2018 - 2020"
+)$data %>%
   mutate(comparison = "during")
 
-pred_states_after <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2020_2022"), 
-           model = m_state_20_22, 
-           title = "2020 - 2022")$data %>% 
+pred_states_after <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  title = "2020 - 2022"
+)$data %>%
   mutate(comparison = "after")
 
 
-pred_states <- bind_rows(pred_states_before, 
-                         pred_states_during,
-                         pred_states_after)
-pred_states %>% 
-  filter(.category  %in% c("died", "shrunk")) %>% 
-  filter(site == "Entre deux baies" & .category =="died" & comparison == "after" & area > 20 |
-           site == "Entre deux baies" & .category =="died" & comparison != "after"|
-           site == "Entre deux baies" & .category =="shrunk"|
-           site == "Ha'apiti") %>% 
-  mutate(diff = abs(0.5 - median)) %>% 
-  group_by(.category, comparison, site) %>% 
-  slice_min(diff) %>% 
-  dplyr::select(site, .category, comparison, diff, area) %>% 
-  arrange(site, .category, comparison) %>% 
-  filter(diff < 0.01) %>% 
-  dplyr::select(-diff) %>% 
-  mutate(area = round(area, 0),
-         .category = recode(.category, 
-                            "died" = "complete mortality",
-                            "shrunk" = "partial mortality"),
-         comparison = factor(comparison),         ,
-         comparison = fct_relevel(comparison, c("before", "during", "after")),
-         comparison = recode(comparison, 
-                            "before" = "2016 - 2018",
-                            "during" = "2018 - 2020",
-                            "after" = "2020 - 2022")
-        ) %>% 
-  rename(fate = .category) %>% 
-  arrange(site,comparison) %>% 
-  pivot_wider(names_from = comparison, values_from = area) %>% 
+pred_states <- bind_rows(
+  pred_states_before,
+  pred_states_during,
+  pred_states_after
+)
+pred_states %>%
+  filter(.category %in% c("died", "shrunk")) %>%
+  filter(
+    site == "Entre deux baies" &
+      .category == "died" &
+      comparison == "after" &
+      area > 20 |
+      site == "Entre deux baies" & .category == "died" & comparison != "after" |
+      site == "Entre deux baies" & .category == "shrunk" |
+      site == "Ha'apiti"
+  ) %>%
+  mutate(diff = abs(0.5 - median)) %>%
+  group_by(.category, comparison, site) %>%
+  slice_min(diff) %>%
+  dplyr::select(site, .category, comparison, diff, area) %>%
+  arrange(site, .category, comparison) %>%
+  filter(diff < 0.01) %>%
+  dplyr::select(-diff) %>%
+  mutate(
+    area = round(area, 0),
+    .category = recode(
+      .category,
+      "died" = "complete mortality",
+      "shrunk" = "partial mortality"
+    ),
+    comparison = factor(comparison),
+    ,
+    comparison = fct_relevel(comparison, c("before", "during", "after")),
+    comparison = recode(
+      comparison,
+      "before" = "2016 - 2018",
+      "during" = "2018 - 2020",
+      "after" = "2020 - 2022"
+    )
+  ) %>%
+  rename(fate = .category) %>%
+  arrange(site, comparison) %>%
+  pivot_wider(names_from = comparison, values_from = area) %>%
   htmlTable(rnames = FALSE)
 ```
 
 Median sizes for 50% mortality, no site
 
 ```{r}
-pred_states_before_ns <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2016_2018"), 
-           model = m_state_16_18, sep_by_site = F,
-           title = "2016 - 2018")$data %>% 
+pred_states_before_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  sep_by_site = F,
+  title = "2016 - 2018"
+)$data %>%
   mutate(comparison = "before")
 
-pred_states_during_ns <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2018_2020"), 
-           model = m_state_18_20, sep_by_site = F,
-           title = "2018 - 2020")$data %>% 
+pred_states_during_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  sep_by_site = F,
+  title = "2018 - 2020"
+)$data %>%
   mutate(comparison = "during")
 
-pred_states_after_ns <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2020_2022"), 
-           model = m_state_20_22, sep_by_site = F,
-           title = "2020 - 2022")$data %>% 
+pred_states_after_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  sep_by_site = F,
+  title = "2020 - 2022"
+)$data %>%
   mutate(comparison = "after")
 
 
-pred_states_ns <- bind_rows(pred_states_before_ns, 
-                         pred_states_during_ns,
-                         pred_states_after_ns)
-pred_states_ns %>% 
-  filter(.category  %in% c("died", "shrunk")) %>% 
+pred_states_ns <- bind_rows(
+  pred_states_before_ns,
+  pred_states_during_ns,
+  pred_states_after_ns
+)
+
+pred_states_ns %>%
+  filter(.category %in% c("died", "shrunk")) %>%
   # filter(site == "Entre deux baies" & .category =="died" & comparison == "after" & area > 20 |
   #          site == "Entre deux baies" & .category =="died" & comparison != "after"|
   #          site == "Entre deux baies" & .category =="shrunk"|
-  #          site == "Ha'apiti") %>% 
-  mutate(diff = abs(0.5 - median)) %>% 
-  group_by(.category, comparison) %>% 
-  slice_min(diff) %>% 
-  dplyr::select( .category, comparison, diff, area) %>% 
-  arrange( .category, comparison) %>% 
-  filter(diff < 0.01) %>% 
-  dplyr::select(-diff) %>% 
-  mutate(area = round(area, 0),
-         .category = recode(.category, 
-                            "died" = "complete mortality",
-                            "shrunk" = "partial mortality"),
-         comparison = factor(comparison),         ,
-         comparison = fct_relevel(comparison, c("before", "during", "after")),
-         comparison = recode(comparison, 
-                            "before" = "2016 - 2018",
-                            "during" = "2018 - 2020",
-                            "after" = "2020 - 2022")
-        ) %>% 
-  rename(fate = .category) %>% 
-  arrange(comparison) %>% 
-  pivot_wider(names_from = comparison, values_from = area) %>% 
+  #          site == "Ha'apiti") %>%
+  mutate(diff = abs(0.5 - median)) %>%
+  group_by(.category, comparison) %>%
+  slice_min(diff) %>%
+  dplyr::select(.category, comparison, diff, area) %>%
+  arrange(.category, comparison) %>%
+  filter(diff < 0.01) %>%
+  dplyr::select(-diff) %>%
+  mutate(
+    area = round(area, 0),
+    .category = recode(
+      .category,
+      "died" = "complete mortality",
+      "shrunk" = "partial mortality"
+    ),
+    comparison = factor(comparison),
+    ,
+    comparison = fct_relevel(comparison, c("before", "during", "after")),
+    comparison = recode(
+      comparison,
+      "before" = "2016 - 2018",
+      "during" = "2018 - 2020",
+      "after" = "2020 - 2022"
+    )
+  ) %>%
+  rename(fate = .category) %>%
+  arrange(comparison) %>%
+  pivot_wider(names_from = comparison, values_from = area) %>%
+  htmlTable(rnames = FALSE)
+```
+
+Including growth
+
+```{r}
+
+pred_states_ns %>%
+  filter(.category %in% c("died", "shrunk", "grew")) %>%
+  # filter(site == "Entre deux baies" & .category =="died" & comparison == "after" & area > 20 |
+  #          site == "Entre deux baies" & .category =="died" & comparison != "after"|
+  #          site == "Entre deux baies" & .category =="shrunk"|
+  #          site == "Ha'apiti") %>%
+  mutate(diff = abs(0.5 - median)) %>%
+  group_by(.category, comparison) %>%
+  slice_min(diff) %>%
+  dplyr::select(.category, comparison, diff, area) %>%
+  arrange(.category, comparison) %>%
+  filter(diff < 0.01) %>%
+  dplyr::select(-diff) %>%
+  mutate(
+    area = round(area, 0),
+    .category = recode(
+      .category,
+      "died" = "complete mortality",
+      "shrunk" = "partial mortality"
+    ),
+    comparison = factor(comparison),
+    ,
+    comparison = fct_relevel(comparison, c("before", "during", "after")),
+    comparison = recode(
+      comparison,
+      "before" = "2016 - 2018",
+      "during" = "2018 - 2020",
+      "after" = "2020 - 2022"
+    )
+  ) %>%
+  rename(fate = .category) %>%
+  arrange(comparison) %>%
+  pivot_wider(names_from = comparison, values_from = area) %>%
   htmlTable(rnames = FALSE)
 ```
 
@@ -450,66 +625,81 @@ pred_states_ns %>%
 To get a rough estimate of additional mortality due to bleaching, subtract mortality in "normal" years (2016 - 2018) from that in years including the event (2018 - 2020).
 
 ```{r}
-predraw_states_before <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2016_2018"), 
-           model = m_state_16_18, 
-           title = "2016 - 2018")$data_raw %>% 
+predraw_states_before <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  title = "2016 - 2018"
+)$data_raw %>%
   mutate(comparison = "before")
 
-predraw_states_during <- plot_model(data = dat_state %>% 
-                       filter(comparison == "2018_2020"), 
-           model = m_state_18_20, 
-           title = "2018 - 2020")$data_raw %>% 
+predraw_states_during <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  title = "2018 - 2020"
+)$data_raw %>%
   mutate(comparison = "during")
 
-predraw_states <- bind_rows(predraw_states_before, 
-                         predraw_states_during) %>% 
-  filter(.category == "died") %>% 
-  pivot_wider(names_from = comparison, values_from = .epred) %>% 
-  mutate(diff = during - before) %>% 
-  group_by(log_area, site, .category) %>% 
-  summarise(median = median(diff, na.rm = T),
-            l95 = quantile(diff, 0.025, na.rm = T),
-            u95 = quantile(diff, 0.975, na.rm = T),
-            
-            l90 = quantile(diff, 0.05, na.rm = T),
-            u90 = quantile(diff, 0.95, na.rm = T),
-            
-            l80 = quantile(diff, 0.1, na.rm = T),
-            u80 = quantile(diff, 0.9, na.rm = T),
-            
-            ) %>% 
-  ungroup() %>% 
-    mutate(area = exp(log_area)-1)
+predraw_states <- bind_rows(predraw_states_before, predraw_states_during) %>%
+  filter(.category == "died") %>%
+  pivot_wider(names_from = comparison, values_from = .epred) %>%
+  mutate(diff = during - before) %>%
+  group_by(log_area, site, .category) %>%
+  summarise(
+    median = median(diff, na.rm = T),
+    l95 = quantile(diff, 0.025, na.rm = T),
+    u95 = quantile(diff, 0.975, na.rm = T),
+
+    l90 = quantile(diff, 0.05, na.rm = T),
+    u90 = quantile(diff, 0.95, na.rm = T),
+
+    l80 = quantile(diff, 0.1, na.rm = T),
+    u80 = quantile(diff, 0.9, na.rm = T),
+  ) %>%
+  ungroup() %>%
+  mutate(area = exp(log_area) - 1)
 
 
-  
 plot_sub <- predraw_states %>%
-  mutate(.category = recode(.category,
-                            "died" = "complete mortality")) %>% 
-  ggplot(aes(x = log_area))+
-  geom_ribbon(aes(x = log_area, ymin = l95, ymax = u95, fill = .category), alpha = .2)+
-  geom_ribbon(aes(x = log_area, ymin = l90, ymax = u90, fill = .category), alpha = .2)+
-  geom_ribbon(aes(x = log_area, ymin = l80, ymax = u80, fill = .category), alpha = .2)+
-  geom_line(aes(y = median, col = .category))+
-  scale_colour_manual(values = cols_state, name = NULL)+
-  scale_fill_manual(values = cols_state, name = NULL)+
+  mutate(.category = recode(.category, "died" = "complete mortality")) %>%
+  ggplot(aes(x = log_area)) +
+  geom_ribbon(
+    aes(x = log_area, ymin = l95, ymax = u95, fill = .category),
+    alpha = .2
+  ) +
+  geom_ribbon(
+    aes(x = log_area, ymin = l90, ymax = u90, fill = .category),
+    alpha = .2
+  ) +
+  geom_ribbon(
+    aes(x = log_area, ymin = l80, ymax = u80, fill = .category),
+    alpha = .2
+  ) +
+  geom_line(aes(y = median, col = .category)) +
+  scale_colour_manual(values = cols_state, name = NULL) +
+  scale_fill_manual(values = cols_state, name = NULL) +
   facet_wrap2(~site, axes = "all") +
-  scale_y_continuous(name="Probability", breaks =seq(0, 1, 0.2))+
-  coord_cartesian(ylim=c(0, 1))+
-  scale_x_continuous(breaks = x_seq, 
-                     labels = x_seq_trans)+
-  labs(y = "Probability", x = expression("Colony area"~cm^2))+
-  theme_andi()+
-  theme(legend.position = "none",
-        plot.title = element_text(face = "bold", hjust = 0.5))#
+  scale_y_continuous(name = "Probability", breaks = seq(0, 1, 0.2)) +
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_x_continuous(breaks = x_seq, labels = x_seq_trans) +
+  labs(y = "Probability", x = expression("Colony area" ~ cm^2)) +
+  theme_andi() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  ) #
 
 plot_sub
 ```
 
 ```{r}
-ggsave(filename = "plot_SI_exp_mortality_bleaching.pdf",
-       plot = plot_sub, 
-       path = here("size/plots"),
-       width = 30, height = 10, units = "cm")
+ggsave(
+  filename = "plot_SI_exp_mortality_bleaching.pdf",
+  plot = plot_sub,
+  path = here("size/plots"),
+  width = 30,
+  height = 10,
+  units = "cm"
+)
 ```
