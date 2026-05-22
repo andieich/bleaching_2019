@@ -1,0 +1,316 @@
+---
+title: "Model Probabilities for fate"
+---
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(here)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(cmdstanr)
+library(ggh4x)
+library(fastDummies)
+library(ggstance)
+library(scales)
+library(htmlTable)
+```
+
+## Functions
+
+```{r}
+source(here("size/scripts/size_helper_fcts.R"))
+```
+
+## Data
+
+### Read & setup data
+
+Use log(1 + area) not log to keep values positive
+
+```{r}
+dat_state <- read.csv(here("size/data/dat_state.csv")) %>%
+  filter(state != "born") %>%
+  mutate(log_area = log(1 + area_1)) %>%
+  mutate(
+    site = recode(site, "HAA" = "Ha'apiti", "E2B" = "Entre deux baies")
+  ) %>%
+  separate(genet_ID, into = c("site2", "quadrat", "rep")) %>%
+  mutate(site_quadrat = paste(site, quadrat, sep = "_")) %>%
+  dplyr::select(-site2)
+```
+
+## Models
+
+### 2016-2018
+
+```{r}
+m_state_16_18 <- brm(
+  state ~ s(log_area, by = site) + (1 | site_quadrat),
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  family = categorical(link = "logit", refcat = NULL),
+  iter = 4000,
+  warmup = 2000,
+  file = here("size/models/m_state_16_18"),
+  chains = 4,
+  cores = 4,
+  seed = 123,
+  threads = threading(2, static = T),
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  backend = "cmdstanr"
+)
+
+summary(m_state_16_18)
+#plot(m_state_16_18)
+pp_check(m_state_16_18, ndraws = 100)
+```
+
+### 2018 -2020
+
+```{r}
+m_state_18_20 <- brm(
+  state ~ s(log_area, by = site) + (1 | site_quadrat),
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  family = categorical(link = "logit", refcat = NULL),
+  iter = 4000,
+  warmup = 2000,
+  file = here("size/models/m_state_18_20"),
+  chains = 4,
+  cores = 4,
+  seed = 123,
+  threads = threading(2, static = T),
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  backend = "cmdstanr"
+)
+
+
+summary(m_state_18_20)
+#plot(m_state_18_20)
+
+pp_check(m_state_18_20, ndraws = 100)
+```
+
+### 2020-2022
+
+```{r}
+m_state_20_22 <- brm(
+  state ~ s(log_area, by = site) + (1 | site_quadrat),
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  family = categorical(link = "logit", refcat = NULL),
+  iter = 4000,
+  warmup = 2000,
+  file = here("size/models/m_state_20_22"),
+  chains = 4,
+  cores = 4,
+  threads = threading(2, static = T),
+  seed = 123,
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  backend = "cmdstanr"
+)
+
+
+summary(m_state_20_22) # 1 div transition
+
+#plot(m_state_20_22)
+pp_check(m_state_20_22, ndraws = 100)
+```
+
+## Plots Separated by Sites
+
+Predict and plot data
+
+```{r}
+plot_states_before <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  title = "2016 - 2018"
+)$plot +
+  theme(legend.position = "none")
+
+plot_states_during <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  title = "2018 - 2020"
+)$plot +
+  theme(legend.position = "none")
+
+
+plot_states_after <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  title = "2020 - 2022"
+)$plot
+```
+
+```{r}
+plot_states_after <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  title = "2020 - 2022"
+)$plot
+```
+
+Combine plots
+
+```{r}
+plot_states = plot_states_before / plot_states_during / plot_states_after
+plot_states
+```
+
+Save plots
+
+```{r}
+ggsave(
+  filename = "SI_plot_states_sites.pdf",
+  plot = plot_states,
+  path = here("size/plots"),
+  width = 30,
+  height = 30,
+  units = "cm"
+)
+```
+
+## Plot mean over sites
+
+```{r}
+plot_states_before_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  sep_by_site = F,
+  title = "2016 - 2018"
+)$plot +
+  labs(tag = "A") +
+  theme(legend.position = "none")
+
+
+plot_states_before_ns <- plot_states_before_ns +
+  add_annotation(x_val = 10, col = cols_state["growth"]) +
+  add_annotation(x_val = 8, col = cols_state["complete mortality"])
+
+plot_states_during_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  sep_by_site = F,
+  title = "2018 - 2020"
+)$plot +
+  labs(tag = "B") +
+  theme(legend.position = "none")
+
+
+plot_states_during_ns <- plot_states_during_ns +
+  add_annotation(x_val = 41, col = cols_state["complete mortality"]) +
+  add_annotation(x_val = 294, col = cols_state["partial mortality"])
+
+
+plot_states_after_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  sep_by_site = F,
+  title = "2020 - 2022"
+)$plot +
+  labs(tag = "C")
+
+
+plot_states_after_ns <- plot_states_after_ns +
+  add_annotation(x_val = 130, col = cols_state["complete mortality"]) +
+  add_annotation(x_val = 211, col = cols_state["partial mortality"])
+
+plot_states_ns = plot_states_before_ns /
+  plot_states_during_ns /
+  plot_states_after_ns
+plot_states_ns
+```
+
+```{r}
+ggsave(
+  filename = "plot_states.pdf",
+  plot = plot_states_ns,
+  path = here("size/plots"),
+  width = 18,
+  height = 30,
+  units = "cm"
+)
+```
+
+## Extract data for 50% mortality
+
+Median sizes for 50% mortality, over both sites
+
+```{r}
+pred_states_before_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2016_2018"),
+  model = m_state_16_18,
+  sep_by_site = F,
+  title = "2016 - 2018"
+)$data %>%
+  mutate(comparison = "before")
+
+pred_states_during_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2018_2020"),
+  model = m_state_18_20,
+  sep_by_site = F,
+  title = "2018 - 2020"
+)$data %>%
+  mutate(comparison = "during")
+
+pred_states_after_ns <- plot_model(
+  data = dat_state %>%
+    filter(comparison == "2020_2022"),
+  model = m_state_20_22,
+  sep_by_site = F,
+  title = "2020 - 2022"
+)$data %>%
+  mutate(comparison = "after")
+
+
+pred_states_ns <- bind_rows(
+  pred_states_before_ns,
+  pred_states_during_ns,
+  pred_states_after_ns
+)
+
+pred_states_ns %>%
+  filter(.category %in% c("died", "shrunk", "grew")) %>%
+  mutate(diff = abs(0.5 - median)) %>%
+  group_by(.category, comparison) %>%
+  slice_min(diff) %>%
+  dplyr::select(.category, comparison, diff, area) %>%
+  arrange(.category, comparison) %>%
+  filter(diff < 0.01) %>%
+  dplyr::select(-diff) %>%
+  mutate(
+    area = round(area, 0),
+    .category = recode(
+      .category,
+      "died" = "complete mortality",
+      "shrunk" = "partial mortality"
+    ),
+    comparison = factor(comparison),
+    ,
+    comparison = fct_relevel(comparison, c("before", "during", "after")),
+    comparison = recode(
+      comparison,
+      "before" = "2016 - 2018",
+      "during" = "2018 - 2020",
+      "after" = "2020 - 2022"
+    )
+  ) %>%
+  rename(fate = .category) %>%
+  arrange(comparison) %>%
+  pivot_wider(names_from = comparison, values_from = area) %>%
+  htmlTable(rnames = FALSE)
+```

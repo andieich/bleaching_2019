@@ -1,0 +1,121 @@
+---
+title: "Plot size distribution"
+---
+
+```{r}
+library(tidyverse)
+library(here)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(cmdstanr)
+library(ggh4x)
+```
+
+```{r}
+source(here("size/scripts/size_helper_fcts.R"))
+```
+
+## Get data
+
+```{r}
+#get data
+dat_size <- read.csv(here("size/data/dat_size.csv"))
+```
+
+```{r}
+dat_size %>%
+  filter(spec == "Pocillopora") %>%
+  summarise(n = n())
+```
+
+### Plot
+
+Number of colonies
+
+```{r}
+dat_n <- dat_size %>%
+  mutate(
+    site = recode(site, "HAA" = "Ha'apiti", "E2B" = "Entre deux baies")
+  ) %>%
+  group_by(year) %>%
+  summarise(n = n()) %>%
+  mutate(n = paste("n =", n))
+```
+
+```{r}
+cols_years <- c(
+  "2016" = "#E69F00",
+  "2018" = "#56B4E9",
+  "2020" = "#009E73",
+  "2022" = "#D55E00"
+)
+
+
+plot_size_distr <- dat_size %>%
+  filter(spec == "Pocillopora") %>%
+  mutate(
+    binned_dia = cut(area, breaks = c(seq(0, 500, by = 25), 1500), dig.lab = 10)
+  ) %>%
+  #helper column containing the center of the coral diametr bin, used for plots
+  mutate(
+    mid = sapply(str_extract_all(.data$binned_dia, "-?[0-9.]+"), function(x) {
+      mean(as.numeric(x))
+    }),
+    mid = ifelse(binned_dia == "(500,1500]", 500, mid)
+  ) %>%
+  group_by(mid, year) %>%
+  summarise(n = n()) %>%
+  ggplot() +
+  geom_bar(
+    aes(fill = factor(year), y = n, x = mid),
+    stat = "identity",
+    linewidth = 0,
+    width = 24
+  ) +
+  geom_text(data = dat_n, aes(y = 240, label = n, x = 250), size = 3) +
+  scale_colour_manual(values = cols_years, name = NULL) +
+  scale_fill_manual(values = cols_years, name = NULL) +
+  labs(x = expression("Colony area" ~ cm^2), y = "n") +
+  facet_grid(~year) +
+  scale_x_continuous(
+    breaks = seq(0, 500, by = 100),
+    labels = c(seq(0, 400, by = 100), ">500")
+  ) +
+  theme_andi() +
+  #theme_minimal()+
+  theme(legend.position = "bottom") +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    legend.position = "none",
+    panel.background = element_rect(colour = "black", fill = 'transparent')
+  )
+
+
+plot_size_distr
+ggsave(
+  filename = "size_distribution.pdf",
+  plot = plot_size_distr,
+  path = here("size/plots"),
+  width = 16,
+  height = 6,
+  units = "cm"
+)
+```
+
+Median Sizes
+
+```{r}
+dat_size %>%
+  mutate(
+    site = recode(site, "HAA" = "Ha'apiti", "E2B" = "Entre deux baies")
+  ) %>%
+  group_by(site, year) %>%
+  summarise(median = median(area))
+```
+
+```{r}
+dat_size %>%
+  group_by(year) %>%
+  summarise(median = median(area))
+```

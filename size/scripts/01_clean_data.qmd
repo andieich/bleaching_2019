@@ -1,0 +1,371 @@
+---
+title: "Clean Data"
+---
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+library(brms)
+library(tidybayes)
+library(fastDummies)
+library(ggokabeito)
+library(patchwork)
+library(cmdstanr)
+```
+
+## Functions
+
+```{r}
+source(here("size/scripts/size_helper_fcts.R"))
+```
+
+## Data
+
+Combine the exported TagLab tables (1 tale per quadrat, 20 quadrats per site) and extract states.
+
+### E2B
+
+#### Read and set up data
+
+```{r}
+# read data
+data_E2B <- combine_data(here("size/data/raw/2024_06_05_export/E2B"))
+
+#combine multiple information per cell
+data_E2B <- data_E2B %>%
+  combine_multiple_entries()
+
+#one df for each pair of years, re-set names of columns, get status info
+
+data_16_18_E2B <- data_E2B %>%
+  select(c(1:7)) %>%
+  filter_at(vars(spec_1, spec_2), any_vars(!is.na(.))) %>%
+  get_infos() %>%
+  mutate(comparison = "2016_2018", site = "E2B")
+
+data_18_20_E2B <- data_E2B %>%
+  select(c(1, 5:10)) %>%
+  filter_at(vars(spec_2, spec_3), any_vars(!is.na(.))) %>%
+  rename(
+    "spec_1" = "spec_2",
+    "area_1" = "area_2",
+    "ID_1" = "ID_2",
+    "spec_2" = "spec_3",
+    "area_2" = "area_3",
+    "ID_2" = "ID_3"
+  ) %>%
+  get_infos() %>%
+  mutate(comparison = "2018_2020", site = "E2B")
+
+
+data_20_22_E2B <- data_E2B %>%
+  select(c(1, 8:13)) %>%
+  filter_at(vars(spec_3, spec_4), any_vars(!is.na(.))) %>%
+  rename(
+    "spec_1" = "spec_3",
+    "area_1" = "area_3",
+    "ID_1" = "ID_3",
+    "spec_2" = "spec_4",
+    "area_2" = "area_4",
+    "ID_2" = "ID_4"
+  ) %>%
+  get_infos() %>%
+  mutate(comparison = "2020_2022", site = "E2B")
+```
+
+#### Check data
+
+Get overview of occurrences of each category
+
+```{r}
+data_16_18_E2B %>%
+  group_by(spec_1, state) %>%
+  count() %>%
+  pivot_wider(names_from = state, values_from = n) %>%
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_18_20_E2B %>%
+  group_by(spec_1, state) %>%
+  count() %>%
+  pivot_wider(names_from = state, values_from = n) %>%
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_20_22_E2B %>%
+  group_by(spec_1, state) %>%
+  count() %>%
+  pivot_wider(names_from = state, values_from = n) %>%
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+```
+
+Plot relative change. Mainly to find unrealistic values
+
+```{r}
+data_16_18_E2B %>%
+  ggplot(aes(x = rel_change)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "darkred") +
+  facet_wrap(~spec_1) +
+  theme_minimal()
+
+data_16_18_E2B %>%
+  filter(rel_change > 20) # ok
+
+data_18_20_E2B %>%
+  ggplot(aes(x = rel_change)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "darkred") +
+  facet_wrap(~spec_1) +
+  theme_minimal()
+
+data_20_22_E2B %>%
+  ggplot(aes(x = rel_change)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "darkred") +
+  facet_wrap(~spec_1) +
+  theme_minimal()
+```
+
+Plot the categories
+
+```{r}
+data_16_18_E2B %>%
+  ggplot(aes(x = area_1, col = state)) +
+  geom_histogram(bins = 100, fill = NA) +
+  facet_wrap(~spec_1) +
+  scale_color_okabe_ito() +
+  theme_minimal()
+```
+
+```{r}
+data_18_20_E2B %>%
+  ggplot(aes(x = area_1, col = state)) +
+  geom_histogram(bins = 100, fill = NA) +
+  facet_wrap(~spec_1) +
+  scale_color_okabe_ito() +
+  theme_minimal()
+```
+
+```{r}
+data_20_22_E2B %>%
+  ggplot(aes(x = area_1, col = state)) +
+  geom_histogram(bins = 100, fill = NA) +
+  facet_wrap(~spec_1) +
+  scale_color_okabe_ito() +
+  theme_minimal()
+```
+
+Now, three data sets are generated for each pair of years
+
+1.  States
+2.  Size per year
+
+#### States
+
+```{r}
+dat_state_E2B <- bind_rows(data_16_18_E2B, data_18_20_E2B, data_20_22_E2B) %>%
+  mutate(site = "E2B")
+```
+
+#### Size per year
+
+```{r}
+data_E2B <- data_E2B %>%
+  select(spec_1, spec_2, spec_3, spec_4, area_1, area_2, area_3, area_4) %>%
+  pivot_longer(area_1:area_4, names_to = "year", values_to = "area") %>%
+  mutate(
+    year = recode(
+      year,
+      "area_1" = "2016",
+      "area_2" = "2018",
+      "area_3" = "2020",
+      "area_4" = "2022"
+    ),
+    site = "E2B",
+    spec = ifelse(is.na(spec_1), spec_2, spec_1),
+    spec = ifelse(is.na(spec), spec_3, spec),
+    spec = ifelse(is.na(spec), spec_4, spec)
+  ) %>%
+  select(-spec_1, -spec_2, -spec_3, -spec_4) %>%
+  filter(area > 0)
+```
+
+### Haapiti
+
+#### Read and set up data
+
+```{r}
+# read data
+data_HAA <- combine_data(here("size/data/raw/2024_06_05_export/HAA"))
+
+#combine multiple information per cell
+data_HAA <- data_HAA %>%
+  combine_multiple_entries()
+
+#one df for each pair of years, re-set names of columns, get status info
+
+data_16_18_HAA <- data_HAA %>%
+  select(c(1:7)) %>%
+  filter_at(vars(spec_1, spec_2), any_vars(!is.na(.))) %>%
+  get_infos() %>%
+  mutate(comparison = "2016_2018", site = "HAA")
+
+data_18_20_HAA <- data_HAA %>%
+  select(c(1, 5:10)) %>%
+  filter_at(vars(spec_2, spec_3), any_vars(!is.na(.))) %>%
+  rename(
+    "spec_1" = "spec_2",
+    "area_1" = "area_2",
+    "ID_1" = "ID_2",
+    "spec_2" = "spec_3",
+    "area_2" = "area_3",
+    "ID_2" = "ID_3"
+  ) %>%
+  get_infos() %>%
+  mutate(comparison = "2018_2020", site = "HAA")
+
+
+data_20_22_HAA <- data_HAA %>%
+  select(c(1, 8:13)) %>%
+  filter_at(vars(spec_3, spec_4), any_vars(!is.na(.))) %>%
+  rename(
+    "spec_1" = "spec_3",
+    "area_1" = "area_3",
+    "ID_1" = "ID_3",
+    "spec_2" = "spec_4",
+    "area_2" = "area_4",
+    "ID_2" = "ID_4"
+  ) %>%
+  get_infos() %>%
+  mutate(comparison = "2020_2022", site = "HAA")
+```
+
+#### Check data
+
+Get overview of occurrences of each category
+
+```{r}
+data_16_18_HAA %>%
+  group_by(spec_1, state) %>%
+  count() %>%
+  pivot_wider(names_from = state, values_from = n) %>%
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_18_20_HAA %>%
+  group_by(spec_1, state) %>%
+  count() %>%
+  pivot_wider(names_from = state, values_from = n) %>%
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+
+data_20_22_HAA %>%
+  group_by(spec_1, state) %>%
+  count() %>%
+  pivot_wider(names_from = state, values_from = n) %>%
+  mutate(n_tot = rowSums(across(where(is.numeric))))
+```
+
+Plot relative change. Mainly to find unrealistic values
+
+```{r}
+data_16_18_HAA %>%
+  ggplot(aes(x = rel_change)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "darkred") +
+  facet_wrap(~spec_1) +
+  theme_minimal()
+
+data_16_18_HAA %>%
+  filter(rel_change > 20) # ok
+
+data_18_20_HAA %>%
+  ggplot(aes(x = rel_change)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "darkred") +
+  facet_wrap(~spec_1) +
+  theme_minimal()
+
+data_20_22_HAA %>%
+  ggplot(aes(x = rel_change)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "darkred") +
+  facet_wrap(~spec_1) +
+  theme_minimal()
+```
+
+Plot the categories
+
+```{r}
+data_16_18_HAA %>%
+  ggplot(aes(x = area_1, col = state)) +
+  geom_histogram(bins = 100, fill = NA) +
+  facet_wrap(~spec_1) +
+  scale_color_okabe_ito() +
+  theme_minimal()
+```
+
+```{r}
+data_18_20_HAA %>%
+  ggplot(aes(x = area_1, col = state)) +
+  geom_histogram(bins = 100, fill = NA) +
+  facet_wrap(~spec_1) +
+  scale_color_okabe_ito() +
+  theme_minimal()
+```
+
+```{r}
+data_20_22_HAA %>%
+  ggplot(aes(x = area_1, col = state)) +
+  geom_histogram(bins = 100, fill = NA) +
+  facet_wrap(~spec_1) +
+  scale_color_okabe_ito() +
+  theme_minimal()
+```
+
+Now, three data sets are generated for each pair of years
+
+1.  States
+2.  Size per year
+
+#### States
+
+```{r}
+dat_state_HAA <- bind_rows(data_16_18_HAA, data_18_20_HAA, data_20_22_HAA) %>%
+  mutate(site = "HAA")
+```
+
+#### Size per year
+
+```{r}
+data_HAA <- data_HAA %>%
+  select(spec_1, spec_2, spec_3, spec_4, area_1, area_2, area_3, area_4) %>%
+  pivot_longer(area_1:area_4, names_to = "year", values_to = "area") %>%
+  mutate(
+    year = recode(
+      year,
+      "area_1" = "2016",
+      "area_2" = "2018",
+      "area_3" = "2020",
+      "area_4" = "2022"
+    ),
+    site = "HAA",
+    spec = ifelse(is.na(spec_1), spec_2, spec_1),
+    spec = ifelse(is.na(spec), spec_3, spec),
+    spec = ifelse(is.na(spec), spec_4, spec)
+  ) %>%
+  select(-spec_1, -spec_2, -spec_3, -spec_4) %>%
+  filter(area > 0)
+```
+
+### Combine & Save
+
+```{r}
+dat_state <- bind_rows(dat_state_E2B, dat_state_HAA) %>%
+  filter(spec_1 == "Pocillopora")
+
+dat_size <- bind_rows(data_E2B, data_HAA) %>%
+  filter(spec == "Pocillopora")
+
+write.csv(dat_state, file = here("size/data/dat_state.csv"), row.names = F)
+write.csv(dat_size, file = here("size/data/dat_size.csv"), row.names = F)
+```
