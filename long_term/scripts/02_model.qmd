@@ -27,6 +27,12 @@ source(here("long_term/scripts/model_helper_fcts.R"))
 ```
 
 
+Load data
+
+```{r}
+dat_genus_delta <- read_rds(here("long_term/data/clean/dat_genus_delta.rds"))
+```
+
 ### Model recovery
 
 -  binomial distribution to model counts with resp. coral genera alogn 50 points per transect for all years incl. 2019
@@ -533,7 +539,6 @@ pred_marine_areaS %>%
 ### Model
 
 As above, this time only 2019 and 2020 data an dincluding year as interactive effect
-
 
 ```{r}
 m_ccover_genus_19_dhw <- brm(

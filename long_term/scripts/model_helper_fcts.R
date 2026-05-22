@@ -26,6 +26,7 @@ make_pastel <- function(cols, n = 0.4) {
 }
 
 # colours
+top_3_corals <- c("Pocillopora", "Montipora", "Acropora")
 cols_genera <- c(brewer.pal(11, "Set3")[c(1, 3, 5)])
 names(cols_genera) <- c(top_3_corals)
 
